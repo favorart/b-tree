@@ -24,7 +24,5 @@ void       techb_destroy (IN sTechB  *techb);
 sTechB*    techb_create  (IN sDB     *db,
                           IN uchar_t *memory,
                           IN uint_t   offset);
-
-
 //-------------------------------------------------------------------------------------------------------------
 #endif // _TECHB_H_

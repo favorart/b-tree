@@ -5,11 +5,10 @@
 /* i in (0, tch_blks_count-1) */
 eTBState   techb_bit (IN sDB *db, IN uint_t index, IN bool set, IN bool bit)
 {
-
  uint_t  byte  = index / (BITSINBYTE);
  uint_t  ipage = index / (BITSINBYTE * db->head_.page_size_);
  //-----------------------------------------
- db->techb_arr_[ipage].memory_
+ // db->techb_arr_[ipage].memory_
 
  byte &= (1U << (index % BITSINBYTE));
  //-----------------------------------------
@@ -19,9 +18,11 @@ eTBState   techb_bit (IN sDB *db, IN uint_t index, IN bool set, IN bool bit)
 // bool techb_read  (IN sTechB *techb) { return true; }
 // bool techb_write (IN sTechB *techb)
 eDBState   techb_sync (IN sDB     *db)
-{ return FAIL;
-
-
+{
+ 
+ 
+ 
+ return FAIL;
 }
 
 void       techb_destroy (IN sTechB  *techb)
@@ -59,3 +60,4 @@ end:;
  }
  return techb;
 }
+

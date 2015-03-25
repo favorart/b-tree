@@ -53,20 +53,23 @@ struct Block
  sDB      *owner_db_; /* pointer to owner date base - BTtree */
  sDBHB    *head_;     /* pointer to interpret the begining of memory_ as aBlock header */
  uchar_t  *data_;     /* pointer to memory after pointers array */
+ uchar_t  *free_;     /* pointer to memory after all useful data in node */
  //----------------------
 };
 //-------------------------------------------------------------------------------------------------------------
-bool       block_is_full (IN sBlock *block);
+bool       block_is_full (IN const sBlock *block);
 //-------------------------------------------------------------------------------------------------------------
-eDBNT*     block_type (IN sBlock *block);
-uint_t*    block_nkvs (IN sBlock *block);
+eDBNT*     block_type    (IN sBlock *block);
+uint_t*    block_nkvs    (IN sBlock *block);
+uint_t     block_data    (IN sBlock *block, IN const sDBT *key, OUT void **vsz);
+uint_t*    block_ptr     (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_insert  (IN sBlock *block, IN sDBT *key, IN  sDBT *value);
-eDBState   block_select  (IN sBlock *block, IN sDBT *key, OUT sDBT *value);
-eDBState   block_delete  (IN sBlock *block, IN sDBT *key);
+eDBState   block_insert  (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value);
+eDBState   block_select  (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value);
+eDBState   block_delete  (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 eDBState   block_write   (IN sBlock *block);
 void       block_destroy (IN sBlock *block);
-sBlock*    block_create  (IN sDB    *db, IN uint_t offset);
+sBlock*    block_create  (IN sDB    *db,    IN uint_t offset);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _BLOCK_H_
