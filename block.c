@@ -25,14 +25,14 @@ eDBNT*     block_type     (IN sBlock *block)
 uint_t*    block_nkvs     (IN sBlock *block)
 { return  &block->head_->kvs_count_; }
 //-------------------------------------------------------------------------------------------------------------
-bool       block_is_full  (IN sBlock *block)
+bool       block_is_full  (IN const sBlock *block)
 { return (2U * block->head_->free_size_ >= block->size_); }
 //-------------------------------------------------------------------------------------------------------------
-sDBT*      block_key_next (IN sBlock *block, IN sDBT *key, OUT uint_t *vsz)
+sDBT*      block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz)
 {
  if ( !key ) // get first
  {
-  uint_t* ksz = block->data_;
+  uint_t* ksz = (uint_t*) block->data_;
   if( vsz ) *vsz = *(ksz + 1U);
 
   key->size = *ksz;
@@ -41,17 +41,23 @@ sDBT*      block_key_next (IN sBlock *block, IN sDBT *key, OUT uint_t *vsz)
  } // !!!
  else // get next
  {
-  // uint_t* ksz =  ;
-  uint_t* vsz = (uchar_t*) key->data - 1;
+  key->size = *((uchar_t*) key->data + key->size + *((uchar_t*) key->data - sizeof (uint_t)));
+  key->data =  ((uchar_t*) key->data + key->size + *((uchar_t*) key->data - sizeof (uint_t)) + sizeof (uint_t) * 2U);
 
-   if ( key->data > (void*)(block->memory_ + (block->size_ - block->head_->free_data_) ) // get last
-   {
-    return NULL;
-   }
- 
- } // !!!
+  if ( key->data >= (void*) block->free_ ) // get last
+  {
+   key->size = 0;
+   key->data = NULL;
+   if ( vsz )
+    *vsz = NULL;
+   return NULL;
+  }
+
+  if ( vsz ) *vsz = ((uint_t*) key->data - 1);
+  return key;
+ } // end else
 }
-uint_t*    block_key_ptr  (IN sBlock *block, IN sDBT *key)
+uint_t*    block_ptr      (IN sBlock *block, IN const sDBT *key)
 {
  if ( !key )
  {
@@ -64,17 +70,17 @@ uint_t*    block_key_ptr  (IN sBlock *block, IN sDBT *key)
   return (uint_t*) ((uchar_t*) (key->data) + key->size + *vsz);
  }
 }
-uint_t*    block_key_val  (IN sBlock *block, IN sDBT *key, OUT void** value)
+uint_t     block_data     (IN sBlock *block, IN const sDBT *key, OUT void** data)
 {
- if ( !key ) return NULL;
+ if ( !key ) return 0;
  
  uint_t *vsz = (uint_t*) (key->data) - 1U;
- *value = ((uchar_t*) (key->data) + key->size);
+ *data     = ((uchar_t*) (key->data) + key->size);
 
- return vsz;
+ return *vsz;
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_insert   (IN sBlock *block, IN sDBT *key, IN  sDBT *value)
+eDBState   block_insert   (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value)
 {
  if ( !(*block_nkvs (block)) )
  {
@@ -82,11 +88,11 @@ eDBState   block_insert   (IN sBlock *block, IN sDBT *key, IN  sDBT *value)
   memset (block->data_, pointer1, sizeof (uint_t));
  }
 
- sDBT *k = block_key_next (block, NULL);
+ sDBT *k = block_key_next (block, NULL, NULL);
  while ( k && key < k )
  {
   // x[i + 1].key = x[i].key;
-  k = block_key_next (block, k);
+  k = block_key_next (block, k, NULL);
  }
  
  {
@@ -104,20 +110,20 @@ eDBState   block_insert   (IN sBlock *block, IN sDBT *key, IN  sDBT *value)
  ++(*(block_nkvs (block)));
  return DONE;
 }
-eDBState   block_select   (IN sBlock *block, IN sDBT *key, OUT sDBT *value)
+eDBState   block_select   (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value)
 {
  eDBState result = DONE;
 
- sDBT* k = block_key_next (block, NULL);
+ sDBT* k = block_key_next (block, NULL, NULL);
  while ( key > k )
  {
-  k = block_key_next (block, k);
+  k = block_key_next (block, k, NULL);
  }
 
  if ( k && !key_compare (key, k) )
  {
   void  *val = NULL;
-  uint_t vsz = block_key_val (block, k, &val);
+  uint_t vsz = block_data (block, k, &val);
 
   value->data = malloc (sizeof (uchar_t) * vsz);
   if ( value->data )
@@ -136,13 +142,13 @@ eDBState   block_select   (IN sBlock *block, IN sDBT *key, OUT sDBT *value)
  }
  else
  {
-  sBlock *child = block_create (block->owner_db_, (*block_key_ptr (block, k)) );
+  sBlock *child = block_create (block->owner_db_, (*block_ptr (block, k)) );
   result = block_select (child, key, value);
   block_destroy (child);
  }
  return result;
 }
-eDBState   block_delete   (IN sBlock *block, IN sDBT *key)
+eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
 { 
  
  
@@ -150,7 +156,7 @@ eDBState   block_delete   (IN sBlock *block, IN sDBT *key)
  return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_seek     (IN sDB    *db, IN uint32_t index, IN bool mem_block)
+eDBState   block_seek     (IN const sDB *db, IN uint32_t index, IN bool mem_block)
 {
  //-----------------------------------------
  long offset = sizeof (sDBFH) + index * db->head_.page_size_;
@@ -185,7 +191,7 @@ eDBState   block_write    (IN sBlock *block)
  return FAIL;
 }
 //-------------------------------------------------------------------------------------------------------------
-sBlock*    block_create   (IN sDB    *db, IN uint_t  offset)
+sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
 {
  bool result = 0;
 
@@ -217,6 +223,7 @@ sBlock*    block_create   (IN sDB    *db, IN uint_t  offset)
    result = true;
    // goto end;
   }
+  block->free_ = block->memory_ + (block->size_ - block->head_->free_size_);
  }
 
 end:;
@@ -233,8 +240,9 @@ void       block_destroy  (IN sBlock *block)
  free (block);
 }
 //-------------------------------------------------------------------------------------------------------------
-void       block_split_child (sBlock *parent, uint_t offset)
+void       block_split_child (IN sBlock *block, IN uint_t offset)
 {
+ sBlock *parent = block;
  // uint_t i, j;
  // 
  sBlock* extra = block_create (parent->owner_db_, 0U);
@@ -244,13 +252,13 @@ void       block_split_child (sBlock *parent, uint_t offset)
  (*block_nkvs (extra)) = (*block_nkvs (child)) / 2U;
 
  /* Claculate the number of items to deligate */
- uint_t size = 0U, count = 0U;
- sDBT* k = block_key_next (child, NULL);
+ uint_t size = 0U, count = 0U, val_size;
+ sDBT* k = block_key_next (child, NULL, &val_size);
  while ( 2U * size <= child->head_->free_size_ )
  {
   ++count;
-  size += k->size + *block_key_val ()
-  k = block_key_next (child, k);
+  size += k->size + val_size;
+  k = block_key_next (child, k, &val_size);
  }
 
 
@@ -291,7 +299,7 @@ void       block_split_child (sBlock *parent, uint_t offset)
  // 
  // return;
 }
-void       block_add_nonfull (sBlock *block, sDBT *key, sDBT *value)
+void       block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDBT *value)
 {
  
  if ( (*block_type (block)) == Leaf )
@@ -301,13 +309,13 @@ void       block_add_nonfull (sBlock *block, sDBT *key, sDBT *value)
  }
  else
  {
-  sDBT *k = block_key_next (block, NULL); // !!! key_prev
+  sDBT *k = block_key_next (block, NULL, NULL); // !!! key_prev
   while ( k && key > k )
   {
-   k = block_key_next (block, k);
+   k = block_key_next (block, k, NULL);
   }
   
-  sBlock *child = block_create (block->owner_db_, *block_key_ptr (block, k));
+  sBlock *child = block_create (block->owner_db_, *block_ptr (block, k));
 
   // while ( i >= 1 && k < x[i].key )
   //  --i;
