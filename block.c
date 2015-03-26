@@ -2,7 +2,7 @@
 #include "block.h"
 
 //-------------------------------------------------------------------------------------------------------------
-uint_t     get_free_block (IN sDB    *db)
+uint_t     block_free     (IN sDB    *db)
 {
  // long  file_position = tell (db->hfile_);
  // //-----------------------------------------
@@ -26,7 +26,7 @@ uint_t*    block_nkvs     (IN sBlock *block)
 { return  &block->head_->kvs_count_; }
 //-------------------------------------------------------------------------------------------------------------
 bool       block_is_full  (IN const sBlock *block)
-{ return (2U * block->head_->free_size_ >= block->size_); }
+{ return (2U * block->head_->free_size_ <= block->size_); }
 //-------------------------------------------------------------------------------------------------------------
 sDBT*      block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz)
 {
@@ -168,19 +168,21 @@ eDBState   block_seek     (IN const sDB *db, IN uint32_t index, IN bool mem_bloc
 eDBState   block_read     (IN sBlock *block)
 {
  long  file_position = tell (block->owner_db_->hfile_);
+ if ( file_position == -1L)
+  return FAIL;
  //-----------------------------------------
  if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
   return FAIL;
- 
- if ( DONE == block_seek (block->owner_db_, block->head_->db_offset_, true) )
- {
-  // checking for reading successfull
-  if( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-   return FAIL;
- }
- //-----------------------------------------
- lseek (block->owner_db_->hfile_, file_position, SEEK_SET);
 
+ if ( block_seek (block->owner_db_, block->head_->db_offset_, true) == FAIL )
+  return FAIL;
+
+ if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
+  return FAIL;
+ 
+ if ( lseek (block->owner_db_->hfile_, file_position, SEEK_SET) != file_position )
+  return FAIL;
+ //-----------------------------------------
  return DONE;
 }
 eDBState   block_write    (IN sBlock *block)
@@ -210,20 +212,27 @@ sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
   }
 
   block->head_ = (sDBHB*) block->memory_;
-  block->data_ = (block->memory_ + sizeof (sDBFH));
-
   if ( offset )
-   block->head_->db_offset_ = offset;
-  else
-   block->head_->db_offset_ = get_free_block (db);
-
-  if ( block_read (block) == FAIL )
   {
-   errno = EINVAL;
-   result = true;
-   // goto end;
+   block->head_->db_offset_ = offset;
+   if ( block_read (block) == FAIL )
+   {
+    errno = EINVAL;
+    result = true;
+    goto end;
+   }
   }
-  block->free_ = block->memory_ + (block->size_ - block->head_->free_size_);
+  else
+  {
+   block->head_->db_offset_ = block_free (db);
+   block->head_->free_size_ = block->size_ - sizeof (sDBFH);
+   block->head_->kvs_count_ = 0U;
+   block->head_->node_type_ = Free;
+   block->head_->pointer_0_ = 0U;
+  }
+  
+  block->data_ = (block->memory_ + sizeof (sDBFH));
+  block->free_ = (block->memory_ + (block->size_ - block->head_->free_size_));
  }
 
 end:;
@@ -236,98 +245,108 @@ end:;
 }
 void       block_destroy  (IN sBlock *block)
 {
- free (block->memory_);
+ if( block )
+  free (block->memory_);
  free (block);
 }
 //-------------------------------------------------------------------------------------------------------------
-void       block_split_child (IN sBlock *block, IN uint_t offset)
+eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value)
 {
- sBlock *parent = block;
- // uint_t i, j;
- // 
- sBlock* extra = block_create (parent->owner_db_, 0U);
- sBlock* child = block_create (parent->owner_db_, offset);  /* FULL NODE */
-
- (*block_type (extra)) = (*block_type (child));
- (*block_nkvs (extra)) = (*block_nkvs (child)) / 2U;
-
- /* Claculate the number of items to deligate */
- uint_t size = 0U, count = 0U, val_size;
- sDBT* k = block_key_next (child, NULL, &val_size);
- while ( 2U * size <= child->head_->free_size_ )
- {
-  ++count;
-  size += k->size + val_size;
-  k = block_key_next (child, k, &val_size);
- }
-
-
-
-
- // // extra.keys_copy (&extra, extra.key_get (&extra, 0), child->key_get (child, t), t - 1);
- // // // for ( uint_t i = 0U; i < (t - 1U); ++i )
- // // //  // shift keys
- // // //  // + value
- // // //  extra[i] = child[i + t];
- // 
- // if ( *child->type (child) != Leaf )
- //  for ( i = 0U; i < t; ++i )
- //   *extra->pointer (extra, i) = *child->pointer (child, i + t);
- // *child->nkvs (child) = t - 1;
- // 
- // for ( j = parent->nkvs (parent); j > i; --j )
- //  *(parent->pointer (parent, j + 1)) = *(parent->pointer (parent, j));
- // *(parent->pointer (parent, i + 1)) = extra->db_offset_;
- // 
- // 
- // 
- // // parent->keys_shift (parent, i, parent->nkeys (parent) - 1, 0);
- // // for ( uint_t j = ; j <= i; --j )
- // //  // shift keys
- // //  // + value
- // //  parent[j+1] = parent[j];
- // {
- //  sDBT *key, *value;
- //  child->key_get (child, t, &key, &value);
- //  parent->insert (parent, key, value);
- //  child->delete (child, key);
- //  //parent[i].key = y[t].key;
- // }
- // child->write (&child);
- // extra->write (&extra);
- // parent->write (parent);
- // 
- // return;
-}
-void       block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDBT *value)
-{
- 
+ eDBState result = DONE;
  if ( (*block_type (block)) == Leaf )
  {
-  block_insert (block, key, value);
-  block_write  (block);
+  if ( block_insert (block, key, value) ||
+      block_write (block) )
+      result = FAIL;
  }
  else
  {
-  sDBT *k = block_key_next (block, NULL, NULL); // !!! key_prev
+  sDBT *k = block_key_next (block, NULL, NULL);
   while ( k && key > k )
   {
    k = block_key_next (block, k, NULL);
   }
-  
+
   sBlock *child = block_create (block->owner_db_, *block_ptr (block, k));
+  if ( !child )
+  {
+   result = FAIL;
+  }
+  else
+  {
+   if ( block_is_full (child) )
+   {
+    block_split_child (child, *block_ptr (child, k));
+    if ( key > k )
+     k = block_key_next (child, k, NULL);
+   }
+   sBlock *nchild = block_create (child->owner_db_, *block_ptr (child, k));
 
-  // while ( i >= 1 && k < x[i].key )
-  //  --i;
-  //read_block (x[i].pointer);
+   if ( !nchild
+       || block_add_nonfull (nchild, key, value) == FAIL
+       || block_write (child) == FAIL
+       || block_write (nchild) == FAIL )
+       result = FAIL;
 
-  // if ( child->full (child) )
-  // {
-  //  block_split_child (child);
-  //  if ( key > k )
-  //   ++i;
-  // }
-  // block_add_nonfull (child, key, value);
+   block_destroy (child);
+   block_destroy (nchild);
+  }
  }
+
+ return result;
+}
+eDBState   block_split_child (IN sBlock *block, IN uint_t offset)
+{
+ eDBState result = DONE;
+ sBlock  *parent = block;
+
+ sBlock* extra = block_create (parent->owner_db_, 0U);  /* new free node */
+ sBlock* child = block_create (parent->owner_db_, offset);  /* full node */
+ if ( !extra || !child )
+ {
+  result = FAIL;
+  goto end;
+ }
+
+ (*block_type (extra)) = (*block_type (child));
+ // (*block_nkvs (extra)) = (*block_nkvs (child)) / 2U;
+
+ /* Claculate the number of items to deligate */
+ uint_t amount_size = 0U, count = 0U, val_size;
+
+ sDBT* k = block_key_next (child, NULL, &val_size);
+ while ( 2U * amount_size <= child->head_->free_size_ )
+ {
+  ++count;
+  amount_size += (k->size + val_size) + (3U * sizeof (uint_t));
+  k = block_key_next (child, k, &val_size);
+ }
+
+ uint_t bnum = ((child->free_ - child->data_) - amount_size);
+ memcpy (extra->data_, child->data_ + amount_size, bnum);
+ (*block_nkvs (child)) -= count;
+ (*block_nkvs (extra))  = count;
+
+ sDBT val = {0};
+ val.size = block_data (child, k, &val.data);
+ if ( block_insert (parent, k, &val) == FAIL )
+ {
+  result = FAIL;
+  goto end;
+ }
+
+ if ( block_write (child) == FAIL ||
+      block_write (extra) == FAIL ||
+      block_write (block) == FAIL )
+ {
+  result = FAIL;
+  // goto end;
+ }
+
+end:;
+ block_destroy (child);
+ block_destroy (extra);
+
+ return result;
 }
 //-------------------------------------------------------------------------------------------------------------

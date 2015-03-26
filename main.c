@@ -5,8 +5,8 @@
 int main ()
 {
  sDBC conf = {0};
- conf.db_size = 200;
- conf.page_size = 10;
+ conf.db_size = 2000;
+ conf.page_size = 100;
 
  sDB *mydb = db_open ("db.dat", &conf);
  if ( mydb )

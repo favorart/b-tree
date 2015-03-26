@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "block.h"
 #include "techb.h"
+
+#include <sys\stat.h>
 //-------------------------------------------------------------------------------------------------------------
 /* ÑÒÐÓÊÒÓÐÀ ÔÀÉËÀ ÁÀÇÛ ÄÀÍÍÛÕ
  *
@@ -29,6 +31,11 @@ sDB* db_open   (IN const char *file,
 {
  eDBState  result = DONE;
  bool  file_exists = false;
+ if ( conf->page_size <= sizeof (sDBFH) )
+ {
+  result = FAIL;
+  goto finish;
+ }
 
   sDB *db = (sDB*) calloc (1U, sizeof (sDB));
   if ( db )
@@ -40,12 +47,12 @@ sDB* db_open   (IN const char *file,
    db->sync   = &db_sync;
 
    /* Check for existence */
-   // if ( (access (file, 0)) == -1 )
-   //  errno = ENOENT;
-   // else
-   //  file_exists = true;
+   if ( (access (file, 0)) == -1 )
+    errno = ENOENT;
+   else
+    file_exists = true;
 
-   db->hfile_ = open (file, _O_CREAT | _O_RDWR | _O_BINARY /*| _O_NOINHERIT */ );
+   db->hfile_ = _open (file, O_CREAT | _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE);
    if ( db->hfile_ == -1 )
    {
     result = FAIL;
@@ -83,15 +90,27 @@ sDB* db_open   (IN const char *file,
     /* File Header */
     write (db->hfile_, conf, sizeof (sDBFH));
     /* Memory blocks */
-    lseek (db->hfile_, (db->head_.block_count_ - 1U) * conf->page_size, SEEK_SET);
-    write (db->hfile_, (db->root_->memory_), conf->page_size); // !!! memory_
+    lseek (db->hfile_, (db->head_.block_count_) * conf->page_size - 1U, SEEK_SET);
+    uchar_t c = 0;
+    write (db->hfile_, &c, 1U);
     /* Seek blocks set, after header */
     lseek (db->hfile_, sizeof (sDBFH), SEEK_SET);
    } // end else
 
    db->techb_arr_ = calloc (db->head_.techb_count_, sizeof (sTechB));
+   if( !db->techb_arr_ )
+   {
+    result = FAIL;
+    errno = ENOMEM;
+    goto finish;
+   }
+
    for ( uint_t i = 0U; i < db->head_.techb_count_; ++i )
-    techb_create (db, (uchar_t*) &db->techb_arr_[i], i);
+    if( !techb_create (db, (uchar_t*) &db->techb_arr_[i], i) )
+    {
+     result = FAIL;
+     goto finish;
+    }
 
   } // end if db
   else
@@ -111,7 +130,10 @@ sDB* db_open   (IN const char *file,
   //-----------------------
 finish:
   if ( result ) // == FAIL
-  { db->close (db); }
+  {
+   db->close (db);
+   db = NULL;
+  }
   //-----------------------
   return db;
 }
@@ -120,18 +142,19 @@ int  db_close  (IN sDB *db)
  //-----------------------
  for ( uint_t i = 0U; i < db->head_.techb_count_; ++i )
  {
-  techb_sync    (db);
+  techb_sync    ( db );
   techb_destroy (&db->techb_arr_[i]);
  }
  free (db->techb_arr_);
 
- block_write   (db->root_);
+ if( db->hfile_ != -1 )
+  block_write (db->root_);
  block_destroy (db->root_);
 
- close (db->hfile_);
- free  (db);
+ if ( db->hfile_ != -1 )
+  close (db->hfile_);
+ free (db);
  //-----------------------
- // db = NULL;
  return 0;
 }
 int  db_delete (IN sDB *db, IN const sDBT *key)
@@ -153,12 +176,12 @@ int  db_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
   (*block_nkvs (new_root)) = 0;
   (*block_ptr  (new_root, NULL)) = rb->head_->db_offset_;
  
-  block_split_child (new_root, 1, db);
-  block_add_nonfull (new_root, key, data, db);
+  block_split_child (new_root, 1);
+  block_add_nonfull (new_root, key, data);
  }
  else
  {
-  block_add_nonfull (rb, key, data, db);
+  block_add_nonfull (rb, key, data);
  }
 
  return 0;

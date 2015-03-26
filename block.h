@@ -3,7 +3,6 @@
 
 #ifndef _BLOCK_H_
 #define _BLOCK_H_
-
 //-------------------------------------------------------------------------------------------------------------
 /* db node type */
 typedef enum DBNT eDBNT;
@@ -25,8 +24,7 @@ struct DBHB // db Block Header
  //----------------
 };
 //-------------------------------------------------------------------------------------------------------------
-/*
- * Блок
+/* БЛОК
  * typedef struct NodeHeader head; - сколько ключей в блоке, тип блока, ...
  *
  *  |  4 bytes  |  4 bytes  |   4 bytes   | key1.size | value1.size |   4 bytes  | 4 bytes |
@@ -71,5 +69,8 @@ eDBState   block_delete  (IN sBlock *block, IN const sDBT *key);
 eDBState   block_write   (IN sBlock *block);
 void       block_destroy (IN sBlock *block);
 sBlock*    block_create  (IN sDB    *db,    IN uint_t offset);
+//-------------------------------------------------------------------------------------------------------------
+eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value);
+eDBState   block_split_child (IN sBlock *block, IN uint_t offset);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _BLOCK_H_
