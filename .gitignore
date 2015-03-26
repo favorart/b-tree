@@ -26,3 +26,15 @@
 *.exe
 *.out
 *.app
+*.tlog
+btr.cpp
+*.filters
+*.user
+*.cache
+back.c
+*.pdb
+tr.cpp
+*.idb
+*.log
+*.unsuccessfulbuild
+*.lastbuildstate

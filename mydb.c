@@ -3,7 +3,7 @@
 
 //-------------------------------------------------------------------------------------------------------------
 int db_cls (sDB *db)
-{ return db->close (db); }
+{ return (db) ? db->close (db) : 0; }
 int db_del (sDB *db, void *key, size_t key_len)
 {
  struct DBT keyt = { .data = key,
