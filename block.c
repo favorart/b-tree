@@ -1,23 +1,22 @@
 #include "stdafx.h"
 #include "block.h"
+#include "techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
 uint_t     block_free     (IN sDB    *db)
 {
- // long  file_position = tell (db->hfile_);
- // //-----------------------------------------
- // lseek (db->hfile_, sizeof (sDBFH), SEEK_SET);
- // 
- // for ( uint_t i = 0U; i < (db->head_.page_size_ * BITSINBYTE); ++i )
- // {
- //  if( !(byte &= (1U << (i % BITSINBYTE))) )
- // 
- // }
- // //-----------------------------------------
- // lseek (db->hfile_, file_position, SEEK_SET);
- // 
- // return byte ? NODE : FREE;
- return 0U;
+  uint_t offset = techb_get_bit (db, 0, true);
+  db->head_.nodes_count_ += 1;
+
+  if ( DONE != techb_set_bit (db, offset, true) )
+  {
+    // mydb_errno =
+    fprintf (stderr, "%s%s\n", strmyerror (mydb_errno));
+    // return ??
+    offset = db->head_.block_count_;
+  }
+ 
+ return offset;
 }
 //-------------------------------------------------------------------------------------------------------------
 eDBNT*     block_type     (IN sBlock *block)
@@ -148,6 +147,19 @@ eDBState   block_select   (IN sBlock *block, IN const sDBT *key, OUT       sDBT 
  }
  return result;
 }
+/*
+ *   Удаление ключа из внутреннего узла
+ *   
+ *   Рассмотрим удаление из внутреннего узла. Имеется внутренний узел x
+ *   и ключ, который нужно удалить, k. Если дочерний узел, предшествующий
+ *   ключу k, содержит больше t - 1 ключа, то находим k_1 – предшественника
+ *   k в поддереве этого узла. Удаляем его. Заменяем k в исходном узле на k_1.
+ *   Проделываем аналогичную работу, если дочерний узел, следующий за ключом k,
+ *   имеет больше t - 1 ключа. Если оба (следующий и предшествующий дочерние узлы)
+ *   имеют по t - 1 ключу, то объединяем этих детей, переносим в них k, а далее
+ *   удаляем k из нового узла. Если сливаются 2 последних потомка корня – то они
+ *   становятся корнем, а предыдущий корень освобождается.
+ */
 eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
 { 
  
@@ -156,38 +168,40 @@ eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
  return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_seek     (IN const sDB *db, IN uint32_t index, IN bool mem_block)
+eDBState   block_seek     (IN sBlock *block, IN bool mem)
 {
- //-----------------------------------------
- long offset = sizeof (sDBFH) + index * db->head_.page_size_;
- if ( mem_block )
-  offset += db->head_.techb_count_;
- //-----------------------------------------
- return (lseek (db->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
+  //-----------------------------------------
+  long offset = block->head_->db_offset_
+              * block->owner_db_->head_.page_size_ + sizeof (sDBFH);
+  if ( mem )
+    offset += block->owner_db_->head_.techb_count_;
+  //-----------------------------------------
+  /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
+  return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
 }
 eDBState   block_read     (IN sBlock *block)
 {
- long  file_position = tell (block->owner_db_->hfile_);
- if ( file_position == -1L)
-  return FAIL;
- //-----------------------------------------
- if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
-  return FAIL;
-
- if ( block_seek (block->owner_db_, block->head_->db_offset_, true) == FAIL )
-  return FAIL;
-
- if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-  return FAIL;
- 
- if ( lseek (block->owner_db_->hfile_, file_position, SEEK_SET) != file_position )
-  return FAIL;
- //-----------------------------------------
- return DONE;
+  //-----------------------------------------
+  long file_position = tell (block->owner_db_->hfile_);
+  if ( file_position == -1L)
+   return FAIL;
+  //-----------------------------------------
+  if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
+   return FAIL;
+  
+  if ( DONE != block_seek (block, true) )
+   return FAIL;
+  
+  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
+   return FAIL;
+  
+  lseek (block->owner_db_->hfile_, file_position, SEEK_SET);
+  //-----------------------------------------
+  return DONE;
 }
-eDBState   block_write    (IN sBlock *block)
+eDBState   block_write    (IN sBlock *block, IN bool mem)
 {
- if ( DONE == block_seek (block->owner_db_, block->head_->db_offset_, true)
+ if ( DONE == block_seek (block, mem)
    && write (block->owner_db_->hfile_, block->memory_, block->size_) == block->size_ )
   return DONE; 
  return FAIL;
@@ -195,53 +209,71 @@ eDBState   block_write    (IN sBlock *block)
 //-------------------------------------------------------------------------------------------------------------
 sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
 {
- bool result = 0;
-
- sBlock *block = calloc (1U, sizeof (sBlock));
- if ( block )
- {
-  block->owner_db_ = db;
-  block->size_ = db->head_.page_size_;
-
-  block->memory_ = calloc (block->size_, sizeof (uchar_t));
-  if ( !block->memory_ )
+  const char *error_prefix = "memory block creation";
+  bool fail = false;
+  sBlock *block = calloc (1U, sizeof (sBlock));
+  //-----------------------------------------
+  if ( block )
   {
-   errno = ENOMEM;
-   result = true;
-   goto end;
-  }
+    block->owner_db_ = db;
+    block->size_ = db->head_.page_size_;
 
-  block->head_ = (sDBHB*) block->memory_;
-  if ( offset )
-  {
-   block->head_->db_offset_ = offset;
-   if ( block_read (block) == FAIL )
-   {
-    errno = EINVAL;
-    result = true;
-    goto end;
-   }
+    block->memory_ = calloc (block->size_, sizeof (uchar_t));
+    if ( !block->memory_ )
+    {
+      fail = true;
+      fprintf (stderr, "%s%s\n", error_prefix, strerror (errno));
+      goto BLOCK_FREE;
+    }
+
+    block->head_ = (sDBHB*) block->memory_;
+    if ( offset && offset < db->head_.block_count_ )
+    {
+      block->head_->db_offset_ = offset;
+      if ( DONE != block_read (block) )
+      {
+        fail = true;
+        mydb_errno = MYDB_ERR_FPARAM;
+        fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+        goto BLOCK_FREE;
+      }
+    }
+    else if ( offset )
+    {
+      fail = true;
+      mydb_errno = MYDB_ERR_FPARAM;
+      fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+      goto BLOCK_FREE;
+    }
+    else
+    {
+      block->head_->db_offset_ = block_free (db);
+      block->head_->free_size_ = block->size_ - sizeof (sDBFH);
+      block->head_->kvs_count_ = 0U;
+      block->head_->node_type_ = Free;
+      block->head_->pointer_0_ = 0U;
+    }
+
+    block->offset_ = block->head_->db_offset_;
+    block->data_ = (block->memory_ + sizeof (sDBFH));
+    block->free_ = (block->memory_ + (block->size_ - block->head_->free_size_));
   }
   else
   {
-   block->head_->db_offset_ = block_free (db);
-   block->head_->free_size_ = block->size_ - sizeof (sDBFH);
-   block->head_->kvs_count_ = 0U;
-   block->head_->node_type_ = Free;
-   block->head_->pointer_0_ = 0U;
+    fail = true;
+    mydb_errno = MYDB_ERR_FPARAM;
+    fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+    // goto BLOCK_FREE;
   }
-  
-  block->data_ = (block->memory_ + sizeof (sDBFH));
-  block->free_ = (block->memory_ + (block->size_ - block->head_->free_size_));
- }
-
-end:;
- if ( result )
- {
-  block_destroy (block);
-  block = NULL;
- }
- return block;
+  //-----------------------------------------
+BLOCK_FREE:;
+  if ( fail )
+  {
+    block_destroy (block);
+    block = NULL;
+  }
+  //-----------------------------------------
+  return block;
 }
 void       block_destroy  (IN sBlock *block)
 {
@@ -256,7 +288,7 @@ eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDB
  if ( (*block_type (block)) == Leaf )
  {
   if ( block_insert (block, key, value) ||
-      block_write (block) )
+      block_write (block, true) )
       result = FAIL;
  }
  else
@@ -284,8 +316,8 @@ eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDB
 
    if ( !nchild
        || block_add_nonfull (nchild, key, value) == FAIL
-       || block_write (child) == FAIL
-       || block_write (nchild) == FAIL )
+       || block_write (child,  true) == FAIL
+       || block_write (nchild, true) == FAIL )
        result = FAIL;
 
    block_destroy (child);
@@ -335,9 +367,9 @@ eDBState   block_split_child (IN sBlock *block, IN uint_t offset)
   goto end;
  }
 
- if ( block_write (child) == FAIL ||
-      block_write (extra) == FAIL ||
-      block_write (block) == FAIL )
+ if ( block_write (child, true) == FAIL ||
+      block_write (extra, true) == FAIL ||
+      block_write (block, true) == FAIL )
  {
   result = FAIL;
   // goto end;
