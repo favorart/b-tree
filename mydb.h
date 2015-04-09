@@ -1,4 +1,4 @@
-#include "stdafx.h"
+п»ї#include "stdafx.h"
 
 #ifndef _MYDB_H_
 #define _MYDB_H_
@@ -42,11 +42,11 @@ struct DBC
 //-------------------------------------------------------------------------------------------------------------
 typedef struct DBFileHeader sDBFH;
 struct DBFileHeader
-{                                       // Page        common;  // общий
+{                                       // Page        common;  // РѕР±С‰РёР№
  /* const */ uint32_t      db_size_;
  /* const */ uint32_t    page_size_;  
              uint32_t  offset2root_;
-             uint32_t  nodes_count_;    // PageSize    padding; // заполнение    
+             uint32_t  nodes_count_;    // PageSize    padding; // Р·Р°РїРѕР»РЅРµРЅРёРµ    
  /* const */ uint32_t  block_count_;
  /* const */ uint32_t  techb_count_;    // PageSize    index_count;
                                         // PageNumber  index_number[1];
