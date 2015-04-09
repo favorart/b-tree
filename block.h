@@ -1,4 +1,4 @@
-#include "stdafx.h"
+п»ї#include "stdafx.h"
 #include "mydb.h"
 
 #ifndef _BLOCK_H_
@@ -24,8 +24,8 @@ struct DBHB // db Block Header
  //----------------
 };
 //-------------------------------------------------------------------------------------------------------------
-/* БЛОК
- * typedef struct NodeHeader head; - сколько ключей в блоке, тип блока, ...
+/* Р‘Р›РћРљ
+ * typedef struct NodeHeader head; - СЃРєРѕР»СЊРєРѕ РєР»СЋС‡РµР№ РІ Р±Р»РѕРєРµ, С‚РёРї Р±Р»РѕРєР°, ...
  *
  *  |  4 bytes  |  4 bytes  |   4 bytes   | key1.size | value1.size |   4 bytes  | 4 bytes |
  *   pointer(1) : key1.size : value1.size : key1.data : value1.data : pointer(2) : offset2 = ptr1:sz:kv1:ptr2:fs1
