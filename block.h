@@ -48,10 +48,14 @@ struct Block
  uchar_t  *memory_;
  uint32_t  size_;
  //----------------------
+ /* (Block <--> Techb) interface */
  sDB      *owner_db_; /* pointer to owner date base - BTtree */
- sDBHB    *head_;     /* pointer to interpret the begining of memory_ as aBlock header */
- uchar_t  *data_;     /* pointer to memory after pointers array */
- uchar_t  *free_;     /* pointer to memory after all useful data in node */
+ uint32_t  offset_;   /* techb ipage, but for block doubles this->head->db_offset_ */
+ bool       dirty_;   /* block non used --> reuse further like LSN */
+ //----------------------
+ sDBHB      *head_;   /* pointer to interpret the begining of memory_ as aBlock header */
+ uchar_t    *data_;   /* pointer to memory after pointers array */
+ uchar_t    *free_;   /* pointer to memory after all useful data in node */
  //----------------------
 };
 //-------------------------------------------------------------------------------------------------------------
@@ -66,7 +70,10 @@ eDBState   block_insert  (IN sBlock *block, IN const sDBT *key, IN  const sDBT *
 eDBState   block_select  (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value);
 eDBState   block_delete  (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_write   (IN sBlock *block);
+eDBState   block_read    (IN sBlock *block);
+eDBState   block_seek    (IN sBlock *block, IN bool mem);
+eDBState   block_write   (IN sBlock *block, IN bool mem);
+//-------------------------------------------------------------------------------------------------------------
 void       block_destroy (IN sBlock *block);
 sBlock*    block_create  (IN sDB    *db,    IN uint_t offset);
 //-------------------------------------------------------------------------------------------------------------

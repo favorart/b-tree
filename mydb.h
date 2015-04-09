@@ -52,21 +52,22 @@ struct DBFileHeader
                                         // PageNumber  index_number[1];
 };
 //-------------------------------------------------------------------------------------------------------------
-typedef struct TechB sTechB;
 typedef struct Block sBlock;
+typedef struct Block sTechB;
 
 typedef struct DB sDB; 
 struct DB
 {
+  //---------------------------------------------
 	/* Public API */
 	/* Returns 0 on OK, -1 on Error */
 	int  (*close)  (struct DB *db);
 	int  (*delete) (struct DB *db, const struct DBT *key);
 	int  (*insert) (struct DB *db, const struct DBT *key, const struct DBT *data);
 	/* * * * * * * * * * * * * *
-	 * Returns malloc'ed data into 'struct DBT *data'.
-	 * Caller must free data->data.'struct DBT *data'
-  * must be alloced in caller.
+	 *  Returns malloc'ed data into  'struct DBT *data'.
+	 *  Caller must free data->data. 'struct DBT *data'
+   *  must be alloced in caller.
 	 * * * * * * * * * * * * * */
 	int (*select) (struct DB *db, const struct DBT *key, struct DBT *data);
 	/* Sync cached pages with disk */
@@ -74,19 +75,19 @@ struct DB
 	/* For future uses - sync cached pages with disk
 	 * int (*sync)(const struct DB *db)
 	 */
-
+   //---------------------------------------------
 	/* Private API */
- HFILE    hfile_;
- sDBFH     head_;
- 
- sTechB   *techb_arr_;
-
- sBlock   *root_;
- sBlock   *extra_;   // uchar_t  *extra_block_;
- sBlock   *child_;   // uchar_t  *child_block_;
- sBlock   *parent_;  // uchar_t  *parnt_block_;
- /*     ...     */
-
+  HFILE    hfile_;
+  sDBFH     head_;
+  //---------------------------------------------
+  sTechB   *techb_arr_;
+  //---------------------------------------------
+  sBlock   *root_;
+  sBlock   *extra_;   // uchar_t  *extra_block_;
+  sBlock   *child_;   // uchar_t  *child_block_;
+  sBlock   *parent_;  // uchar_t  *parnt_block_;
+  /*     ...     */
+  //---------------------------------------------
 }; /* Need for supporting multiple backends (HASH/BTREE) */
 //-------------------------------------------------------------------------------------------------------------
 /* Open DB if it exists, otherwise create DB */
