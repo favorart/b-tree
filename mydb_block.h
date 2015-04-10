@@ -1,4 +1,5 @@
 ﻿#include "stdafx.h"
+#include "mydb_error.h"
 #include "mydb.h"
 
 #ifndef _BLOCK_H_

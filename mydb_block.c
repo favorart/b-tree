@@ -1,6 +1,6 @@
 ﻿#include "stdafx.h"
-#include "block.h"
-#include "techb.h"
+#include "mydb_block.h"
+#include "mydb_techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /* DECORATIVE OPERATIONS */
@@ -90,7 +90,7 @@ uint_t     block_data     (IN sBlock *block, IN const sDBT *key, OUT void** data
 //-------------------------------------------------------------------------------------------------------------
 /* LOW-LEVEL OPERATIONS */
 
-eDBState   block_seek (IN sBlock *block, IN bool mem)
+eDBState   block_seek  (IN sBlock *block, IN bool mem)
 {
   //-----------------------------------------
   long offset = block->head_->db_offset_
@@ -101,7 +101,7 @@ eDBState   block_seek (IN sBlock *block, IN bool mem)
   /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
   return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
 }
-eDBState   block_read (IN sBlock *block)
+eDBState   block_read  (IN sBlock *block)
 {
   //-----------------------------------------
   long file_position = tell (block->owner_db_->hfile_);
@@ -231,7 +231,7 @@ end:;
   return result;
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_insert   (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value)
+eDBState   block_insert (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value)
 {
  if ( !(*block_nkvs (block)) )
  {
@@ -261,7 +261,7 @@ eDBState   block_insert   (IN sBlock *block, IN const sDBT *key, IN  const sDBT 
  ++(*(block_nkvs (block)));
  return DONE;
 }
-eDBState   block_select   (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value)
+eDBState   block_select (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value)
 {
  eDBState result = DONE;
 
@@ -311,8 +311,8 @@ eDBState   block_select   (IN sBlock *block, IN const sDBT *key, OUT       sDBT 
  *   имеют по t - 1 ключу, то объединяем этих детей, переносим в них k, а далее
  *   удаляем k из нового узла. Если сливаются 2 последних потомка корня – то они
  *   становятся корнем, а предыдущий корень освобождается.
- */
-eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
+ */             
+eDBState   block_delete (IN sBlock *block, IN const sDBT *key)
 { 
  
  
@@ -320,7 +320,24 @@ eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
  return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
+uint_t     block_index_to_free (IN sDB *db)
+{
+  const char *error_prefix = "";
+
+  uint_t offset = techb_get_index_of_first_free_bit (db);
+  db->head_.nodes_count_ += 1;
+
+  if ( DONE != techb_set_bit (db, offset, true) )
+  {
+    // mydb_errno =
+    fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+    offset = db->head_.block_count_; // return ??
+  }
+
+  return offset;
+}
+//-------------------------------------------------------------------------------------------------------------
+sBlock*    block_create  (IN sDB    *db, IN uint_t offset)
 {
   const char *error_prefix = "memory block creation";
   bool fail = false;
@@ -360,7 +377,7 @@ sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
     }
     else
     {
-      block->head_->db_offset_ = block_free (db);
+      block->head_->db_offset_ = block_index_to_free (db);
       block->head_->free_size_ = block->size_ - sizeof (sDBFH);
       block->head_->kvs_count_ = 0U;
       block->head_->node_type_ = Free;
@@ -388,25 +405,10 @@ BLOCK_FREE:;
   //-----------------------------------------
   return block;
 }
-void       block_destroy  (IN sBlock *block)
+void       block_destroy (IN sBlock *block)
 {
  if( block )
   free (block->memory_);
  free (block);
-}
-//-------------------------------------------------------------------------------------------------------------
-uint_t     block_index_to_free (IN sDB *db)
-{
-  uint_t offset = techb_get_bit (db, 0, true);
-  db->head_.nodes_count_ += 1;
-
-  if ( DONE != techb_set_bit (db, offset, true) )
-  {
-    // mydb_errno =
-    fprintf (stderr, "%s%s\n", strmyerror (mydb_errno));
-    offset = db->head_.block_count_; // return ??
-  }
-
-  return offset;
 }
 //-------------------------------------------------------------------------------------------------------------

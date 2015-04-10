@@ -36,15 +36,4 @@ typedef unsigned char  uchar_t;
 typedef uint32_t        uint_t;
 typedef uint64_t       ulong_t;
 //-------------------------------------------------------------------------------------------------------------
-typedef enum mydb_error e_mydb_err;
-enum mydb_error
-{ 
-  MYDB_ERR_NONE,   MYDB_ERR_FPARAM, MYDB_ERR_FNEXST, 
-  MYDB_ERR_BWRITE, MYDB_ERR_OFFSET, // MYDB_ERR_
-  /* , ... */
-} ;
-
-e_mydb_err mydb_errno;
-const char* strmyerror (e_mydb_err err);
-//-------------------------------------------------------------------------------------------------------------
 #endif // _STDAFX_H_
