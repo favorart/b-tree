@@ -2,14 +2,7 @@
 
 #ifndef _MYDB_H_
 #define _MYDB_H_
-//-------------------------------------------------------------------------------------------------------------
-#ifdef _WIN32
-#pragma warning (disable : 4047) // pointer to function in a return
-#endif
-
-#define BITSINBYTE    8U
-#define MAXKEYS      (2U * MINKEYS - 1U)
-#define MINKEYS      (16U)
+#define  MYDB_BITSINBYTE  8U
 //-------------------------------------------------------------------------------------------------------------
 typedef enum  db_state eDBState;
 enum  db_state // : uchar_t
@@ -48,8 +41,7 @@ struct DBFileHeader
              uint32_t  offset2root_;
              uint32_t  nodes_count_;    // PageSize    padding; // заполнение    
  /* const */ uint32_t  block_count_;
- /* const */ uint32_t  techb_count_;    // PageSize    index_count;
-                                        // PageNumber  index_number[1];
+ /* const */ uint32_t  techb_count_;
 };
 //-------------------------------------------------------------------------------------------------------------
 typedef struct Block sBlock;
@@ -79,13 +71,16 @@ struct DB
 	/* Private API */
   HFILE    hfile_;
   sDBFH     head_;
+  sBlock   *root_;
   //---------------------------------------------
   sTechB   *techb_arr_;
-  //---------------------------------------------
-  sBlock   *root_;
-  sBlock   *extra_;   // uchar_t  *extra_block_;
-  sBlock   *child_;   // uchar_t  *child_block_;
-  sBlock   *parent_;  // uchar_t  *parnt_block_;
+  size_t    techb_last_free;
+  //---------------------------------------------  
+  sBlock   *extra_; 
+  sBlock   *child_; 
+  sBlock   *parent_;
+
+  sBlock  **path_;
   /*     ...     */
   //---------------------------------------------
 }; /* Need for supporting multiple backends (HASH/BTREE) */
