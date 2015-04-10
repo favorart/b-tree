@@ -1,5 +1,5 @@
 ﻿#include "stdafx.h"
-#include "block.h"
+#include "mydb_block.h"
 
 #ifndef _TECHB_H_
 #define _TECHB_H_
@@ -17,7 +17,9 @@ sTechB*    techb_create  (IN sDB     *db,
                           IN uchar_t *memory,
                           IN uint_t   offset);
 //-------------------------------------------------------------------------------------------------------------
-uint32_t   techb_get_bit (IN sDB *db, IN uint32_t offset, IN bool first_free);
-eTBState   techb_set_bit (IN sDB *db, IN uint32_t offset, IN bool bit);
+eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit);
+eTBState   techb_get_bit (IN sDB *db, OUT uint32_t offset, IN bool *bit);
+//-------------------------------------------------------------------------------------------------------------
+uint32_t   techb_get_index_of_first_free_bit (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _TECHB_H_

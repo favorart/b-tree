@@ -1,5 +1,5 @@
 ﻿#include "stdafx.h"
-#include "block.h"
+#include "mydb_block.h"
 #include "mydb.h"
 
 #ifndef _MYDB_CACHE_H_

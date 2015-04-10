@@ -38,7 +38,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <SourcePath>$(VC_SourcePath);$(VC_SourcePath)\tarantool</SourcePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -64,23 +66,27 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="block.h" />
-    <ClInclude Include="journal.h" />
+    <ClInclude Include="mydb_block.h" />
+    <ClInclude Include="mydb_journal.h" />
     <ClInclude Include="mydb.h" />
     <ClInclude Include="mydb_cache.h" />
+    <ClInclude Include="mydb_error.h" />
     <ClInclude Include="stdafx.h" />
-    <ClInclude Include="techb.h" />
+    <ClInclude Include="tarantool\rb.h" />
+    <ClInclude Include="tarantool\rlist.h" />
+    <ClInclude Include="mydb_techb.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="back.c" />
-    <ClCompile Include="block.c" />
-    <ClCompile Include="journal.c" />
+    <ClCompile Include="mydb_block.c" />
+    <ClCompile Include="mydb_journal.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="mydb.c" />
     <ClCompile Include="mydb_cache.c" />
     <ClCompile Include="mydb_methods.c" />
-    <ClCompile Include="texhb.c" />
-    <ClCompile Include="util.c" />
+    <ClCompile Include="tarantool\rlist.c" />
+    <ClCompile Include="mydb_texhb.c" />
+    <ClCompile Include="mydb_error.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

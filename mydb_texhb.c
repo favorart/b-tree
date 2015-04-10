@@ -1,6 +1,6 @@
 ﻿#include "stdafx.h"
-#include "block.h"
-#include "techb.h"
+#include "mydb_block.h"
+#include "mydb_techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
 void      compose (OUT uint32_t *offset, IN  IN  uint32_t sz_page,
@@ -25,7 +25,7 @@ eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit)
   uint_t  ipage, ibyte, ibit, sz_techb = (db->head_.page_size_);
   decompose (offset, sz_techb, &ipage, &ibyte, &ibit);
   //-----------------------------------------
-  uint_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
+  uchar_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
   //-----------------------------------------
   return (*byte & (1U << ibit)) ? NODE : FREE;
 }
@@ -33,10 +33,10 @@ eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit)
 /* Otherwise it returns the value of a bit by given offset. */
 eTBState   techb_get_bit (IN sDB *db, OUT uint32_t offset, IN bool *bit)
 {
-  uint_t  ipage, ibyte, ibit, *byte;
+  uint_t  ipage, ibyte, ibit;
   decompose (offset, db->head_.page_size_, &ipage, &ibyte, &ibit);
   //-----------------------------------------
-  byte = &db->techb_arr_[ipage].memory_[ibyte];
+  uchar_t *byte = &db->techb_arr_[ipage].memory_[ibyte];
   //-----------------------------------------
   return (*byte & (1U << ibit)) ? NODE : FREE;
 }
@@ -54,7 +54,7 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
     for ( uint_t ibyte = in_byte; ibyte < sz_techb; ++ibyte )
       for ( uint_t  ibit = in_bit; ibit < MYDB_BITSINBYTE; ++ibit )
       { 
-        uint_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
+        uchar_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
         if ( !(*byte & (1U << ibit)) )
         {
           compose (&db->techb_last_free, sz_techb, ipage, ibyte, ibit);
