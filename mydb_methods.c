@@ -103,7 +103,7 @@ sDB* db_open   (IN const char *file, IN const sDBC *conf)
     db->head_.page_size_   = conf->page_size;
     db->head_.block_count_ = conf->db_size / conf->page_size;
     db->head_.nodes_count_ = 0U;
-    db->head_.techb_count_ = db->head_.block_count_ / BITSINBYTE;
+    db->head_.techb_count_ = db->head_.block_count_  / MYDB_BITSINBYTE;
     db->head_.offset2root_ = db->head_.techb_count_; /* first non tech block */
 
     mydb_file_size = (db->head_.block_count_) * conf->page_size - 1U;

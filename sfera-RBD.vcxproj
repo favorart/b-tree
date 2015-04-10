@@ -65,15 +65,19 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="block.h" />
+    <ClInclude Include="journal.h" />
     <ClInclude Include="mydb.h" />
+    <ClInclude Include="mydb_cache.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="techb.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="back.c" />
     <ClCompile Include="block.c" />
+    <ClCompile Include="journal.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="mydb.c" />
+    <ClCompile Include="mydb_cache.c" />
     <ClCompile Include="mydb_methods.c" />
     <ClCompile Include="texhb.c" />
     <ClCompile Include="util.c" />

@@ -3,37 +3,64 @@
 #include "techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
+void      compose (OUT uint32_t *offset, IN  IN  uint32_t sz_page,
+                   IN  uint_t  ipage, IN  uint_t  ibyte, IN  uint_t  ibit)
+{
+  *offset = ibit + (ibyte + ipage * sz_page) * MYDB_BITSINBYTE;
+}
+void    decompose (IN  uint32_t offset, IN  uint32_t sz_page,
+                   OUT uint_t *ipage, OUT uint_t *ibyte, OUT uint_t *ibit)
+{
+  /* offset = ibit + (ibyte + ipage * sz_page) * BITSINBYTE */
+
+  *ibit  = (offset % MYDB_BITSINBYTE);
+  *ibyte = (offset / MYDB_BITSINBYTE % sz_page);
+  *ipage = (offset / MYDB_BITSINBYTE / sz_page);
+}
+//-------------------------------------------------------------------------------------------------------------
 /* offset must lie in the interval [0, tch_blks_count-1] */
 /* returns DONE/FAIL */
-eTBState   techb_set_bit (IN sDB *db, IN uint32_t offset, IN bool bit)
+eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit)
 {
- uint_t  byte  = offset / (BITSINBYTE);
- uint_t  ipage = offset / (BITSINBYTE * db->head_.page_size_);
- //-----------------------------------------
- // db->techb_arr_[ipage].memory_
-
- byte &= (1U << (offset % BITSINBYTE));
- //-----------------------------------------
- return byte ? NODE : FREE;
+  uint_t  ipage, ibyte, ibit, sz_techb = (db->head_.page_size_);
+  decompose (offset, sz_techb, &ipage, &ibyte, &ibit);
+  //-----------------------------------------
+  uint_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
+  //-----------------------------------------
+  return (*byte & (1U << ibit)) ? NODE : FREE;
 }
 /* techb_get_bit returns the offset of first free bit, if flag is active. */
 /* Otherwise it returns the value of a bit by given offset. */
-uint32_t   techb_get_bit (IN sDB *db, IN uint32_t offset, IN bool first_free)
+eTBState   techb_get_bit (IN sDB *db, OUT uint32_t offset, IN bool *bit)
 {
-  // uint32_t  offset = 0;
-  
-  // long  file_position = tell (db->hfile_);
-  // //-----------------------------------------
-  // lseek (db->hfile_, sizeof (sDBFH), SEEK_SET);
-  // 
-  // for ( uint_t i = 0U; i < (db->head_.page_size_ * BITSINBYTE); ++i )
-  // {
-  //  if( !(byte &= (1U << (i % BITSINBYTE))) )
-  // 
-  // }
-  // //-----------------------------------------
-  // lseek (db->hfile_, file_position, SEEK_SET);
-
+  uint_t  ipage, ibyte, ibit, *byte;
+  decompose (offset, db->head_.page_size_, &ipage, &ibyte, &ibit);
+  //-----------------------------------------
+  byte = &db->techb_arr_[ipage].memory_[ibyte];
+  //-----------------------------------------
+  return (*byte & (1U << ibit)) ? NODE : FREE;
+}
+uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
+{
+  uint32_t  offset = db->techb_last_free;
+  //-----------------------------------------
+  uint_t   c_techb = db->head_.techb_count_;
+  uint_t  sz_techb = db->head_.page_size_;
+  //-----------------------------------------
+  uint_t in_page, in_byte, in_bit;
+  decompose (offset, sz_techb, &in_page, &in_byte, &in_bit);
+  //-----------------------------------------
+  for ( uint_t ipage = in_page; ipage < c_techb; ++ipage )
+    for ( uint_t ibyte = in_byte; ibyte < sz_techb; ++ibyte )
+      for ( uint_t  ibit = in_bit; ibit < MYDB_BITSINBYTE; ++ibit )
+      { 
+        uint_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
+        if ( !(*byte & (1U << ibit)) )
+        {
+          compose (&db->techb_last_free, sz_techb, ipage, ibyte, ibit);
+        }
+      }
+  //-----------------------------------------
   return offset;
 }
 //-------------------------------------------------------------------------------------------------------------
@@ -60,6 +87,7 @@ eDBState   techb_sync    (IN sDB *db)
   return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
+/* clear the data in techb, but do not free itself */
 void       techb_destroy (IN sTechB  *techb)
 {
  free   (techb->memory_);

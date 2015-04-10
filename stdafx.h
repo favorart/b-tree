@@ -17,7 +17,9 @@
 /* linux code goes here */
 #include <unistd.h>
 #elif _WIN32
-#pragma warning (disable : 4996)
+#pragma warning (disable : 4996) // safe-windows functions
+#pragma warning (disable : 4047) // pointer to function in a return
+
 /*  Values for the second argument to access */
 #define F_OK  0  /* Test for existence.  */
 #define W_OK  2  /* Test for write permission.  */
@@ -38,11 +40,11 @@ typedef enum mydb_error e_mydb_err;
 enum mydb_error
 { 
   MYDB_ERR_NONE,   MYDB_ERR_FPARAM, MYDB_ERR_FNEXST, 
-  MYDB_ERR_BWRITE, MYDB_ERR_OFFSET /* , ... */
+  MYDB_ERR_BWRITE, MYDB_ERR_OFFSET, // MYDB_ERR_
+  /* , ... */
 } ;
 
 e_mydb_err mydb_errno;
 const char* strmyerror (e_mydb_err err);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _STDAFX_H_
-

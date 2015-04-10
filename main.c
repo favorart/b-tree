@@ -23,7 +23,7 @@ int main ()
   db_put (mydb, &k, sz, &d, sz);
  
   uint_t* v = NULL;
-  db_get (mydb, k, sz, &v, sz);
+  db_get (mydb, k, sz, &v, &sz);
  }
  db_cls (mydb);
 

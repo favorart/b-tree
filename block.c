@@ -3,22 +3,8 @@
 #include "techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
-uint_t     block_free     (IN sDB    *db)
-{
-  uint_t offset = techb_get_bit (db, 0, true);
-  db->head_.nodes_count_ += 1;
+/* DECORATIVE OPERATIONS */
 
-  if ( DONE != techb_set_bit (db, offset, true) )
-  {
-    // mydb_errno =
-    fprintf (stderr, "%s%s\n", strmyerror (mydb_errno));
-    // return ??
-    offset = db->head_.block_count_;
-  }
- 
- return offset;
-}
-//-------------------------------------------------------------------------------------------------------------
 eDBNT*     block_type     (IN sBlock *block)
 { return  &block->head_->node_type_; }
 uint_t*    block_nkvs     (IN sBlock *block)
@@ -77,6 +63,172 @@ uint_t     block_data     (IN sBlock *block, IN const sDBT *key, OUT void** data
  *data     = ((uchar_t*) (key->data) + key->size);
 
  return *vsz;
+}
+//-------------------------------------------------------------------------------------------------------------
+/*   В sBlock появятся дополнительные параметры:
+*
+*      struct page *lru_next; — для участия в lru списке
+*      struct page *lru_prev;
+*      enum { dirty, clean } status; — страница изменена и не записана на диск
+*
+*   Алгоритм block_read модифицируется следующим образом:
+*
+*      struct page *block_read (block_id_t block_no)
+*      {
+*        /* search block in the cache by id * /
+*        /* if a block is found, put it first in the lru list, then return * /
+*        /* otherwise, maybe evict some blocks, read the block from disk, insert into the hash, return block * /
+*      }
+*
+*   Алгоритм block_write разбивается на 2 части: непосредственно
+*   в момент модификации данных, меняется статус страницы. Если необходимо
+*   сделать eviction, и статус страницы == dirty, вызывается старая
+*   реализация block_write.
+*
+*   Рекомендуется сделать сначала LRU кэш без поддержки журнала и отладить его.
+*/
+//-------------------------------------------------------------------------------------------------------------
+/* LOW-LEVEL OPERATIONS */
+
+eDBState   block_seek (IN sBlock *block, IN bool mem)
+{
+  //-----------------------------------------
+  long offset = block->head_->db_offset_
+    * block->owner_db_->head_.page_size_ + sizeof (sDBFH);
+  if ( mem )
+    offset += block->owner_db_->head_.techb_count_;
+  //-----------------------------------------
+  /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
+  return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
+}
+eDBState   block_read (IN sBlock *block)
+{
+  //-----------------------------------------
+  long file_position = tell (block->owner_db_->hfile_);
+  if ( file_position == -1L )
+    return FAIL;
+  //-----------------------------------------
+  if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
+    return FAIL;
+
+  if ( DONE != block_seek (block, true) )
+    return FAIL;
+
+  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
+    return FAIL;
+
+  lseek (block->owner_db_->hfile_, file_position, SEEK_SET);
+  //-----------------------------------------
+  return DONE;
+}
+eDBState   block_write (IN sBlock *block, IN bool mem)
+{
+  if ( DONE == block_seek (block, mem)
+      && write (block->owner_db_->hfile_, block->memory_, block->size_) == block->size_ )
+      return DONE;
+  return FAIL;
+}
+//-------------------------------------------------------------------------------------------------------------
+/* HIGH-LEVEL OPERATIONS */
+
+eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value)
+{
+  eDBState  result = DONE;
+  if ( (*block_type (block)) == Leaf )
+  {
+    if ( block_insert (block, key, value) ||
+        block_write (block, true) )
+        result = FAIL;
+  }
+  else
+  {
+    sDBT *k = block_key_next (block, NULL, NULL);
+    while ( k && key > k )
+    {
+      k = block_key_next (block, k, NULL);
+    }
+
+    sBlock *child = block_create (block->owner_db_, *block_ptr (block, k));
+    if ( !child )
+    {
+      result = FAIL;
+    }
+    else
+    {
+      if ( block_is_full (child) )
+      {
+        block_split_child (child, *block_ptr (child, k));
+        if ( key > k )
+          k = block_key_next (child, k, NULL);
+      }
+      sBlock *nchild = block_create (child->owner_db_, *block_ptr (child, k));
+
+      if ( !nchild
+          || block_add_nonfull (nchild, key, value) == FAIL
+          || block_write (child, true) == FAIL
+          || block_write (nchild, true) == FAIL )
+          result = FAIL;
+
+      block_destroy (child);
+      block_destroy (nchild);
+    }
+  }
+
+  return result;
+}
+eDBState   block_split_child (IN sBlock *block, IN uint_t offset)
+{
+  eDBState result = DONE;
+  sBlock  *parent = block;
+
+  sBlock* extra = block_create (parent->owner_db_, 0U);  /* new free node */
+  sBlock* child = block_create (parent->owner_db_, offset);  /* full node */
+  if ( !extra || !child )
+  {
+    result = FAIL;
+    goto end;
+  }
+
+  (*block_type (extra)) = (*block_type (child));
+  // (*block_nkvs (extra)) = (*block_nkvs (child)) / 2U;
+
+  /* Claculate the number of items to deligate */
+  uint_t amount_size = 0U, count = 0U, val_size;
+
+  sDBT* k = block_key_next (child, NULL, &val_size);
+  while ( 2U * amount_size <= child->head_->free_size_ )
+  {
+    ++count;
+    amount_size += (k->size + val_size) + (3U * sizeof (uint_t));
+    k = block_key_next (child, k, &val_size);
+  }
+
+  uint_t bnum = ((child->free_ - child->data_) - amount_size);
+  memcpy (extra->data_, child->data_ + amount_size, bnum);
+  (*block_nkvs (child)) -= count;
+  (*block_nkvs (extra)) = count;
+
+  sDBT val = { 0 };
+  val.size = block_data (child, k, &val.data);
+  if ( block_insert (parent, k, &val) == FAIL )
+  {
+    result = FAIL;
+    goto end;
+  }
+
+  if ( block_write (child, true) == FAIL
+      || block_write (extra, true) == FAIL
+      || block_write (block, true) == FAIL )
+  {
+    result = FAIL;
+    // goto end;
+  }
+
+end:;
+  block_destroy (child);
+  block_destroy (extra);
+
+  return result;
 }
 //-------------------------------------------------------------------------------------------------------------
 eDBState   block_insert   (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value)
@@ -168,45 +320,6 @@ eDBState   block_delete   (IN sBlock *block, IN const sDBT *key)
  return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_seek     (IN sBlock *block, IN bool mem)
-{
-  //-----------------------------------------
-  long offset = block->head_->db_offset_
-              * block->owner_db_->head_.page_size_ + sizeof (sDBFH);
-  if ( mem )
-    offset += block->owner_db_->head_.techb_count_;
-  //-----------------------------------------
-  /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
-  return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
-}
-eDBState   block_read     (IN sBlock *block)
-{
-  //-----------------------------------------
-  long file_position = tell (block->owner_db_->hfile_);
-  if ( file_position == -1L)
-   return FAIL;
-  //-----------------------------------------
-  if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
-   return FAIL;
-  
-  if ( DONE != block_seek (block, true) )
-   return FAIL;
-  
-  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-   return FAIL;
-  
-  lseek (block->owner_db_->hfile_, file_position, SEEK_SET);
-  //-----------------------------------------
-  return DONE;
-}
-eDBState   block_write    (IN sBlock *block, IN bool mem)
-{
- if ( DONE == block_seek (block, mem)
-   && write (block->owner_db_->hfile_, block->memory_, block->size_) == block->size_ )
-  return DONE; 
- return FAIL;
-}
-//-------------------------------------------------------------------------------------------------------------
 sBlock*    block_create   (IN sDB    *db, IN uint_t offset)
 {
   const char *error_prefix = "memory block creation";
@@ -282,103 +395,18 @@ void       block_destroy  (IN sBlock *block)
  free (block);
 }
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value)
+uint_t     block_index_to_free (IN sDB *db)
 {
- eDBState result = DONE;
- if ( (*block_type (block)) == Leaf )
- {
-  if ( block_insert (block, key, value) ||
-      block_write (block, true) )
-      result = FAIL;
- }
- else
- {
-  sDBT *k = block_key_next (block, NULL, NULL);
-  while ( k && key > k )
+  uint_t offset = techb_get_bit (db, 0, true);
+  db->head_.nodes_count_ += 1;
+
+  if ( DONE != techb_set_bit (db, offset, true) )
   {
-   k = block_key_next (block, k, NULL);
+    // mydb_errno =
+    fprintf (stderr, "%s%s\n", strmyerror (mydb_errno));
+    offset = db->head_.block_count_; // return ??
   }
 
-  sBlock *child = block_create (block->owner_db_, *block_ptr (block, k));
-  if ( !child )
-  {
-   result = FAIL;
-  }
-  else
-  {
-   if ( block_is_full (child) )
-   {
-    block_split_child (child, *block_ptr (child, k));
-    if ( key > k )
-     k = block_key_next (child, k, NULL);
-   }
-   sBlock *nchild = block_create (child->owner_db_, *block_ptr (child, k));
-
-   if ( !nchild
-       || block_add_nonfull (nchild, key, value) == FAIL
-       || block_write (child,  true) == FAIL
-       || block_write (nchild, true) == FAIL )
-       result = FAIL;
-
-   block_destroy (child);
-   block_destroy (nchild);
-  }
- }
-
- return result;
-}
-eDBState   block_split_child (IN sBlock *block, IN uint_t offset)
-{
- eDBState result = DONE;
- sBlock  *parent = block;
-
- sBlock* extra = block_create (parent->owner_db_, 0U);  /* new free node */
- sBlock* child = block_create (parent->owner_db_, offset);  /* full node */
- if ( !extra || !child )
- {
-  result = FAIL;
-  goto end;
- }
-
- (*block_type (extra)) = (*block_type (child));
- // (*block_nkvs (extra)) = (*block_nkvs (child)) / 2U;
-
- /* Claculate the number of items to deligate */
- uint_t amount_size = 0U, count = 0U, val_size;
-
- sDBT* k = block_key_next (child, NULL, &val_size);
- while ( 2U * amount_size <= child->head_->free_size_ )
- {
-  ++count;
-  amount_size += (k->size + val_size) + (3U * sizeof (uint_t));
-  k = block_key_next (child, k, &val_size);
- }
-
- uint_t bnum = ((child->free_ - child->data_) - amount_size);
- memcpy (extra->data_, child->data_ + amount_size, bnum);
- (*block_nkvs (child)) -= count;
- (*block_nkvs (extra))  = count;
-
- sDBT val = {0};
- val.size = block_data (child, k, &val.data);
- if ( block_insert (parent, k, &val) == FAIL )
- {
-  result = FAIL;
-  goto end;
- }
-
- if ( block_write (child, true) == FAIL ||
-      block_write (extra, true) == FAIL ||
-      block_write (block, true) == FAIL )
- {
-  result = FAIL;
-  // goto end;
- }
-
-end:;
- block_destroy (child);
- block_destroy (extra);
-
- return result;
+  return offset;
 }
 //-------------------------------------------------------------------------------------------------------------
