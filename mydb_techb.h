@@ -4,6 +4,11 @@
 #ifndef _TECHB_H_
 #define _TECHB_H_
 //-------------------------------------------------------------------------------------------------------------
+/*   N - размер файла; K - число блоков
+ *   K * 1 бит = M - техническая информация - битовая маска свободных блоков
+ *  (N - M) - количество памяти для хранения информации
+ */
+//-------------------------------------------------------------------------------------------------------------
 typedef enum  tch_blk_state eTBState;
 enum  tch_blk_state // : uchar_t
 { FREE, NODE };
@@ -17,8 +22,8 @@ sTechB*    techb_create  (IN sDB     *db,
                           IN uchar_t *memory,
                           IN uint_t   offset);
 //-------------------------------------------------------------------------------------------------------------
-eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit);
-eTBState   techb_get_bit (IN sDB *db, OUT uint32_t offset, IN bool *bit);
+eTBState   techb_set_bit (IN sDB *db, IN uint32_t offset, IN  bool  bit);
+eTBState   techb_get_bit (IN sDB *db, IN uint32_t offset, OUT bool *bit);
 //-------------------------------------------------------------------------------------------------------------
 uint32_t   techb_get_index_of_first_free_bit (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------

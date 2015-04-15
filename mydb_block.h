@@ -8,10 +8,9 @@
 /* db node type */
 typedef enum DBNT eDBNT;
 enum DBNT // : uchar_t
-{ Free, Root, Pass, Leaf };
+{ Free, Pass, Leaf /* , Root */ };
 //-------------------------------------------------------------------------------------------------------------
-/* struct  of a  block */
-/* struct Memory Block */
+/* Memory Block */
 typedef struct DBHB sDBHB;
 struct DBHB // db Block Header
 {
@@ -25,21 +24,17 @@ struct DBHB // db Block Header
  //----------------
 };
 //-------------------------------------------------------------------------------------------------------------
-/* БЛОК
- * typedef struct NodeHeader head; - сколько ключей в блоке, тип блока, ...
- *
- *  |  4 bytes  |  4 bytes  |   4 bytes   | key1.size | value1.size |   4 bytes  | 4 bytes |
- *   pointer(1) : key1.size : value1.size : key1.data : value1.data : pointer(2) : offset2 = ptr1:sz:kv1:ptr2:fs1
+/*  | 4 bytes |  4 bytes  |   4 bytes   | key1.size | value1.size |  4 bytes | 4 bytes |
+ *   pointer1 : key1.size : value1.size : key1.data : value1.data : pointer2 : offset2 = ptr1:sz:kv1:ptr2:fs1
  *                                                                             >> no limits
  *   +------+-------------------------------------------------------------------------------------------------+
- * v | head | ptr1, sz:kv1, ptr2, sz:kv2, ptr3, ... , ptr(N), sz:kvN, ptr(N+1) -->                            |
+ * v | head | ptr1, sz:kv1, ptr2, sz:kv2, ptr3, ... , ptrN, sz:kvN, ptr(N+1) -->                              |
  *   +------+-------------------------------------------------------------------------------------------------+
  *                                                                              v << limit
  *   +------+---------------------------+---------------------------------------------------------------------+
- * x | head | ptr1, ptr2, ..., ptr(N+1) | sz:kv1, sz:kv2, ... , sz:kv(N) -->    |    <-- fs(N), ..., fs2, fs1 |
+ * x | head | ptr1, ptr2, ..., ptr(N+1) | sz:kv1, sz:kv2, ... , sz:kvN -->      |      <-- fsN, ..., fs2, fs1 |
  *   +------+---------------------------+---------------------------------------------------------------------+
- *                                                                              ^
- */
+ *                                                                              ^                           */
 //-------------------------------------------------------------------------------------------------------------
 typedef struct Block sBlock;
 struct Block
@@ -60,25 +55,22 @@ struct Block
  //----------------------
 };
 //-------------------------------------------------------------------------------------------------------------
-bool       block_is_full (IN const sBlock *block);
+bool      block_isfull  (IN const sBlock *block);
+bool      block_enough  (IN const sBlock *block);
 //-------------------------------------------------------------------------------------------------------------
-eDBNT*     block_type    (IN sBlock *block);
-uint_t*    block_nkvs    (IN sBlock *block);
-uint_t     block_data    (IN sBlock *block, IN const sDBT *key, OUT void **vsz);
-uint_t*    block_ptr     (IN sBlock *block, IN const sDBT *key);
+eDBNT*    block_type (IN sBlock *block);
+uint_t*   block_nkvs (IN sBlock *block);
+uint_t*   block_lptr (IN sBlock *block, IN const sDBT *key);
+uint_t*   block_rptr (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_insert  (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value);
-eDBState   block_select  (IN sBlock *block, IN const sDBT *key, OUT       sDBT *value);
-eDBState   block_delete  (IN sBlock *block, IN const sDBT *key);
+sBlock*   block_create  (IN sDB    *db, IN uint_t offset);
+void      block_destroy (IN sBlock *block);
 //-------------------------------------------------------------------------------------------------------------
-eDBState   block_read    (IN sBlock *block);
-eDBState   block_seek    (IN sBlock *block, IN bool mem);
-eDBState   block_write   (IN sBlock *block, IN bool mem);
+eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDBT *value);
+eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDBT *value);
+eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-void       block_destroy (IN sBlock *block);
-sBlock*    block_create  (IN sDB    *db,    IN uint_t offset);
-//-------------------------------------------------------------------------------------------------------------
-eDBState   block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value);
-eDBState   block_split_child (IN sBlock *block, IN uint_t offset);
+eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *zchild);
+eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *ychild, IN  sBlock *zchild);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _BLOCK_H_
