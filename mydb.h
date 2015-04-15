@@ -35,13 +35,15 @@ struct DBC
 //-------------------------------------------------------------------------------------------------------------
 typedef struct DBFileHeader sDBFH;
 struct DBFileHeader
-{                                       // Page        common;  // общий
- /* const */ uint32_t      db_size_;
- /* const */ uint32_t    page_size_;  
-             uint32_t  offset2root_;
-             uint32_t  nodes_count_;    // PageSize    padding; // заполнение    
- /* const */ uint32_t  block_count_;
- /* const */ uint32_t  techb_count_;
+{
+  // Page        common;  // общий
+  // PageSize    padding; // заполнение 
+  /* const */ uint32_t      db_size_;
+  /* const */ uint32_t    page_size_;
+              uint32_t  offset2root_;  /* меняем при присвоении типа Root */
+              uint32_t  nodes_count_;  /* меняем в block_index_free */
+  /* const */ uint32_t  block_count_;
+  /* const */ uint32_t  techb_count_;
 };
 //-------------------------------------------------------------------------------------------------------------
 typedef struct Block sBlock;
@@ -75,26 +77,23 @@ struct DB
   //---------------------------------------------
   sTechB   *techb_arr_;
   size_t    techb_last_free;
-  //---------------------------------------------  
-  sBlock   *extra_; 
-  sBlock   *child_; 
-  sBlock   *parent_;
-
-  sBlock  **path_;
+  //---------------------------------------------
   /*     ...     */
   //---------------------------------------------
 }; /* Need for supporting multiple backends (HASH/BTREE) */
 //-------------------------------------------------------------------------------------------------------------
-/* Open DB if it exists, otherwise create DB */
-sDB* db_open (const char *file, const sDBC *conf);
+#define dbcreate  db_create
+#define dbopen    db_create
+/* Open DB, if it exists, otherwise create DB */
+sDB* db_create (const char *file, const sDBC conf);
 
-int  db_cls (sDB *);
-int  db_del (sDB *, void *, size_t);
-int  db_get (sDB *, void *, size_t, void **, size_t *);
-int  db_put (sDB *, void *, size_t, void * , size_t  );
-/* Sync cached pages with disk */
-int  db_sync (sDB *db);
+int  db_close  (sDB *);
+int  db_del    (sDB *, void *, size_t);
+int  db_get    (sDB *, void *, size_t, void **, size_t *);
+int  db_put    (sDB *, void *, size_t, void * , size_t  );
+/* Syncronize the cached blocks with data on a disk */
+int  db_sync   (sDB *db);
 //-------------------------------------------------------------------------------------------------------------
-int  key_compare (IN const sDBT *key, IN const sDBT *k);
+int  key_compare (IN const sDBT *k, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_H_

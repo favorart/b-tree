@@ -3,6 +3,10 @@
 #include "mydb_techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
+eDBState   block_read  (IN sBlock *block);
+eDBState   block_seek  (IN sBlock *block, IN bool mem);
+eDBState   block_write (IN sBlock *block, IN bool mem);
+//-------------------------------------------------------------------------------------------------------------
 void      compose (OUT uint32_t *offset, IN  IN  uint32_t sz_page,
                    IN  uint_t  ipage, IN  uint_t  ibyte, IN  uint_t  ibit)
 {
@@ -18,28 +22,40 @@ void    decompose (IN  uint32_t offset, IN  uint32_t sz_page,
   *ipage = (offset / MYDB_BITSINBYTE / sz_page);
 }
 //-------------------------------------------------------------------------------------------------------------
-/* offset must lie in the interval [0, tch_blks_count-1] */
-/* returns DONE/FAIL */
-eTBState   techb_set_bit (IN sDB *db, IN  uint32_t offset, IN bool  bit)
+/* set a bit with given offset in tech.blocks array of db */
+eTBState   techb_set_bit (IN sDB *db, IN uint32_t offset, IN  bool  bit)
 {
   uint_t  ipage, ibyte, ibit, sz_techb = (db->head_.page_size_);
+  uchar_t  *byte;
+
+  if ( offset >= sz_techb )
+    return FAIL;
+  //-----------------------------------------
   decompose (offset, sz_techb, &ipage, &ibyte, &ibit);
+  byte  = (&db->techb_arr_[ipage].memory_[ibyte]);
+
+   if ( bit ) *byte |=  (1U << (MYDB_BITSINBYTE - ibit - 1U));
+   else       *byte &= ~(1U << (MYDB_BITSINBYTE - ibit - 1U));
   //-----------------------------------------
-  uchar_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
-  //-----------------------------------------
-  return (*byte & (1U << ibit)) ? NODE : FREE;
+  return DONE;
 }
-/* techb_get_bit returns the offset of first free bit, if flag is active. */
-/* Otherwise it returns the value of a bit by given offset. */
-eTBState   techb_get_bit (IN sDB *db, OUT uint32_t offset, IN bool *bit)
+/* returns the value of a bit by given offset */
+eTBState   techb_get_bit (IN sDB *db, IN uint32_t offset, OUT bool *bit)
 {
-  uint_t  ipage, ibyte, ibit;
-  decompose (offset, db->head_.page_size_, &ipage, &ibyte, &ibit);
+  uint_t  ipage, ibyte, ibit, sz_techb = db->head_.page_size_;
+  uchar_t *byte;
+
+  if ( offset >= sz_techb )
+    return FAIL;
   //-----------------------------------------
-  uchar_t *byte = &db->techb_arr_[ipage].memory_[ibyte];
+  decompose (offset, sz_techb, &ipage, &ibyte, &ibit);
+
+   byte = &db->techb_arr_[ipage].memory_[ibyte];
+  *bit = ((*byte & (1U << (MYDB_BITSINBYTE - ibit - 1U))) != 0U);
   //-----------------------------------------
-  return (*byte & (1U << ibit)) ? NODE : FREE;
+  return DONE;
 }
+/* returns the offset of first free bit in tech.blocks array of db */
 uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
 {
   uint32_t  offset = db->techb_last_free;
@@ -55,15 +71,18 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
       for ( uint_t  ibit = in_bit; ibit < MYDB_BITSINBYTE; ++ibit )
       { 
         uchar_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
-        if ( !(*byte & (1U << ibit)) )
-        {
+        if ( !(*byte & (1U << (MYDB_BITSINBYTE - ibit - 1U))) )
+        { // ПОЧЕМУ 128 ?!?!?
+          *byte |= (1U << (MYDB_BITSINBYTE - ibit - 1U));
           compose (&db->techb_last_free, sz_techb, ipage, ibyte, ibit);
+          return db->techb_last_free;          
         }
       }
   //-----------------------------------------
-  return offset;
+  return db->head_.block_count_;
 }
 //-------------------------------------------------------------------------------------------------------------
+/* drop the changes in the db tech.blocks to the disk */
 eDBState   techb_sync    (IN sDB *db)
 {
   const char *error_prefix = "technical block syncronization";
