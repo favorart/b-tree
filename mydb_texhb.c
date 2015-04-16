@@ -1,11 +1,8 @@
 ﻿#include "stdafx.h"
+#include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
 
-//-------------------------------------------------------------------------------------------------------------
-eDBState   block_read  (IN sBlock *block);
-eDBState   block_seek  (IN sBlock *block, IN bool mem);
-eDBState   block_write (IN sBlock *block, IN bool mem);
 //-------------------------------------------------------------------------------------------------------------
 void      compose (OUT uint32_t *offset, IN  IN  uint32_t sz_page,
                    IN  uint_t  ipage, IN  uint_t  ibyte, IN  uint_t  ibit)
@@ -72,7 +69,7 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
       { 
         uchar_t  *byte = &db->techb_arr_[ipage].memory_[ibyte];
         if ( !(*byte & (1U << (MYDB_BITSINBYTE - ibit - 1U))) )
-        { // ПОЧЕМУ 128 ?!?!?
+        { 
           *byte |= (1U << (MYDB_BITSINBYTE - ibit - 1U));
           compose (&db->techb_last_free, sz_techb, ipage, ibyte, ibit);
           return db->techb_last_free;          

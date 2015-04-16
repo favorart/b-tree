@@ -1,7 +1,7 @@
 ﻿#ifndef _STDAFX_H_
 #define _STDAFX_H_
 //-------------------------------------------------------------------------------------------------------------
-#include <sys\stat.h>
+#include <sys/stat.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>

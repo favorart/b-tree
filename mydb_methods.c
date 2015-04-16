@@ -15,9 +15,10 @@ int  db_flush (IN sDB *db);
 int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
 { // if ( this_key->size != that_key->size )
   //  return (this_key->size > that_key->size) ? 1 : -1;
-  return  memcmp (this_key->data, that_key->data, // this_key->size);
-                 (this_key->size <= that_key->size) ?
-                  this_key->size :  that_key->size);
+  int res = memcmp (this_key->data, that_key->data, // this_key->size);
+                   (this_key->size <= that_key->size) ?
+                    this_key->size : that_key->size);
+  return res;
 }
 //-------------------------------------------------------------------------------------------------------------
 sDB* db_create (IN const char *file, IN const sDBC conf)
@@ -51,10 +52,9 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
   db->sync   = &db_flush;
   //-----------------------------------------
   /* Check for db file existence */
-  if ( // access (file, F_OK) != -1 && // exist
-          access (file, R_OK | W_OK) != -1 )
+  if ( access (file, F_OK | R_OK | W_OK) != -1 )
   {
-    // file_exists = true;
+    file_exists = true;
   }
   else
   {
@@ -62,7 +62,7 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
     printf ("%s%s\n", error_prefix, strmyerror (mydb_errno));
   }
   //-----------------------------------------
-  db->hfile_ = _open (file, O_CREAT | _O_RDWR | _O_BINARY, _S_IREAD | _S_IWRITE);
+  db->hfile_ = open (file, O_CREAT | O_RDWR | O_BINARY, S_IREAD | S_IWRITE);
   if ( db->hfile_ == -1 )
   {
     fail = true;
@@ -101,7 +101,7 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
     db->head_.block_count_ = (conf.db_size - sizeof (sDBFH)) / conf.page_size;
     db->head_.nodes_count_ = (0U);
     db->head_.techb_count_ = (db->head_.block_count_ - 1U)  / MYDB_BITSINBYTE + 1U; /* round to large integer */
-    db->head_.offset2root_ = (0U); /* first non-tech.block */
+    db->head_.offset2root_ = MYDB_OFFSET2NEW; /* first non-tech.block */
     //-----------------------------------------
     mydb_file_size = (db->head_.block_count_) * conf.page_size - 1U;
 
@@ -146,7 +146,6 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
   if ( !file_exists )
   {
     (*block_type (db->root_)) = Leaf;
-    // !!!
   }
   //-----------------------------------------
 MYDB_FREE:
@@ -193,8 +192,8 @@ int  db_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
   {
     sBlock *new_root, *new_block;
     /* alloc new free blocks */
-    new_root  = block_create (db, 0U);
-    new_block = block_create (db, 0U);
+    new_root  = block_create (db, MYDB_OFFSET2NEW);
+    new_block = block_create (db, MYDB_OFFSET2NEW);
     if ( !new_root || !new_block )
       return -1;
     

@@ -8,7 +8,7 @@ enum mydb_error
 {
   MYDB_ERR_NONE,   MYDB_ERR_FPARAM, MYDB_ERR_FNEXST,
   MYDB_ERR_BWRITE, MYDB_ERR_OFFSET, MYDB_ERR_NFREEB
-                                    /* , ... */
+  /* , ... */
 };
 
 e_mydb_err mydb_errno;

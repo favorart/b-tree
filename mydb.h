@@ -76,7 +76,7 @@ struct DB
   sBlock   *root_;
   //---------------------------------------------
   sTechB   *techb_arr_;
-  size_t    techb_last_free;
+  uint_t    techb_last_free;
   //---------------------------------------------
   /*     ...     */
   //---------------------------------------------
@@ -89,7 +89,7 @@ sDB* db_create (const char *file, const sDBC conf);
 
 int  db_close  (sDB *);
 int  db_del    (sDB *, void *, size_t);
-int  db_get    (sDB *, void *, size_t, void **, size_t *);
+int  db_get    (sDB *, void *, size_t, void **, size_t *);;
 int  db_put    (sDB *, void *, size_t, void * , size_t  );
 /* Syncronize the cached blocks with data on a disk */
 int  db_sync   (sDB *db);

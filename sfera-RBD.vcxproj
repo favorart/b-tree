@@ -66,6 +66,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="mydb_block_low.h" />
     <ClInclude Include="mydb_block.h" />
     <ClInclude Include="mydb_journal.h" />
     <ClInclude Include="mydb.h" />
@@ -79,15 +80,16 @@
   <ItemGroup>
     <ClCompile Include="back.c" />
     <ClCompile Include="mydb_block.c" />
+    <ClCompile Include="mydb_block_low.c" />
     <ClCompile Include="mydb_journal.c" />
-    <ClCompile Include="main.c" />
+    <ClCompile Include="mydb_main.c" />
     <ClCompile Include="mydb.c" />
     <ClCompile Include="mydb_cache.c" />
     <ClCompile Include="mydb_methods.c" />
     <ClCompile Include="tarantool\rlist.c" />
     <ClCompile Include="mydb_texhb.c" />
     <ClCompile Include="mydb_error.c" />
-    <ClCompile Include="utils.c" />
+    <ClCompile Include="mydb_block_delete.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
