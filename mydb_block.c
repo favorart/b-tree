@@ -1,4 +1,5 @@
 ﻿#include "stdafx.h"
+#include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
 
@@ -22,212 +23,9 @@ uint_t*   block_rptr (IN sBlock *block, IN const sDBT *key)
 }
 //-------------------------------------------------------------------------------------------------------------
 bool      block_isfull (IN const sBlock *block)
-{ return ( 2U * block->head_->free_size_ <= (block->size_ - sizeof (sDBHB)) ); }
+{ return ( 3U * block->head_->free_size_ <= 1U * (block->size_ - sizeof (sDBHB)) ); }
 bool      block_enough (IN const sBlock *block)
-{ return ( 4U * block->head_->free_size_ >= (block->size_ - sizeof (sDBHB)) ); }
-//-------------------------------------------------------------------------------------------------------------
-/*  function of iteration through the Block by keys
- *  to init the iteratio -, give a pointer to a key sDBT with zero size
- *  to stop the iteration - function returns NULL   
- */
-sDBT*     block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz)
-{
-  if ( !(*block_nkvs (block)) )
-    return NULL;
-
-  if ( !key->size ) /* get first key */
-  {
-    uint_t* ksz = (uint_t*) block->data_;
-    if( vsz ) *vsz = *(ksz + 1U);
-  
-    key->data = (void*) (ksz + 2U);
-    key->size = *ksz;
-    return key; 
-  } // !!!
-  else /* get next key */
-  {
-    uint_t  ptr_i = 0;
-    uint_t  val_size = *((uint_t*) ((uchar_t*) key->data - sizeof (uint_t)));
-
-    key->size = *((uchar_t*) key->data + key->size + val_size + sizeof (ptr_i));
-    key->data =  ((uchar_t*) key->data + key->size + val_size + sizeof (ptr_i)
-                 + sizeof (key->size) + sizeof (val_size));
-    
-    if ( key->data >= (void*) block->free_ ) /* got all keys */
-    {
-      key->size = 0;
-      key->data = NULL;
-      if ( vsz ) *vsz = NULL;
-
-      return NULL;
-    }
-    
-    if ( vsz ) *vsz = ((uint_t*) key->data - 1);
-    return key;
-  } // end else
-}
-/*  return non-malloc'ed value array */
-uint_t    block_key_data (IN sBlock *block, IN const sDBT *key, OUT void **data)
-{
-  if ( !key ) return 0;
-
-  uint_t *vsz = (uint_t*) (key->data) - 1U;
-  *data = ((uchar_t*) (key->data) + key->size);
-
-  return *vsz;
-}
-//-------------------------------------------------------------------------------------------------------------
-/*   
- *   В sBlock появятся дополнительные параметры:
- *
- *      sBlock *lru_next; — для участия в lru списке
- *      sBlock *lru_prev;
- *      enum { dirty, clean } status; — страница изменена и не записана на диск
- *
- *   Алгоритм block_read модифицируется следующим образом:
- *
- *      struct page *block_read (block_id_t block_no)
- *      {
- *        /* Search for a block in the cache by ID.
- *         * If a block is found, put it first in the LRU-list, then return.
- *         * Otherwise, maybe evict some blocks, read the block from a disk,
- *         * insert into the hash, return block.
- *         * /
- *      }
- *
- *   Алгоритм block_write разбивается на 2 части:
- *   1. Непосредственно в момент модификации данных, меняется статус страницы.
- *      Если необходимо сделать вытеснение (eviction), и статус страницы == dirty,
- *      вызывается старая реализация block_write.
- *   2. Старая реализация block_write.
- *
- *   Рекомендуется сделать сначала LRU-кэш без поддержки журнала и отладить его.
- */
-//-------------------------------------------------------------------------------------------------------------
-/* LOW-LEVEL OPERATIONS */
-
-eDBState  block_seek   (IN sBlock *block, IN bool mem)
-{
-  // if ( !block )
-  // { /* just for beauty, to be able to set a position */
-  //   return (lseek (block->owner_db_->hfile_, sizeof (sDBFH), SEEK_SET)
-  //           == sizeof (sDBFH)) ? DONE : FAIL;
-  // }
-  //-----------------------------------------
-  long offset = sizeof (sDBFH) + block->offset_
-              * block->owner_db_->head_.page_size_;
-  if ( mem )
-    offset += block->owner_db_->head_.techb_count_
-            * block->owner_db_->head_.page_size_;
-  //-----------------------------------------
-  /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
-  return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
-}
-eDBState  block_read   (IN sBlock *block)
-{
-  //-----------------------------------------
-  // long file_position = tell (block->owner_db_->hfile_);
-  // if ( file_position == -1L )
-  //   return FAIL;
-  //-----------------------------------------
-  if ( block->head_->db_offset_ >= block->owner_db_->head_.block_count_ )
-    return FAIL;
-
-  if ( DONE != block_seek (block, true) )
-    return FAIL;
-
-  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-    return FAIL;
-
-  // lseek (block->owner_db_->hfile_, file_position, SEEK_SET);
-  //-----------------------------------------
-  return DONE;
-}
-eDBState  block_write  (IN sBlock *block, IN bool mem)
-{
-  if ( DONE == block_seek (block, mem)
-    && write (block->owner_db_->hfile_, block->memory_, block->size_) == block->size_ )
-      return DONE;
-  return FAIL;
-}
-//-------------------------------------------------------------------------------------------------------------
-eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN  const sDBT *value)
-{
-  //-----------------------------------------
-  uchar_t *lay_mem = NULL;
-  uint_t   need_free_size = (sizeof (uint_t) * 3 + value->size + key->size);
-  //-----------------------------------------
-  if ( need_free_size > block->head_->free_size_ )
-    return FAIL;
-  //-----------------------------------------
-  sDBT iter = { 0 };
-  sDBT   *k = block_key_next (block, &iter, NULL);
-  while ( k && key < k )
-  {
-    k = block_key_next (block, k, NULL);
-  }
-  //-----------------------------------------
-  if ( k )
-  {
-    lay_mem = ((uchar_t*) k->data - sizeof (uint_t) * 3);
-    memmove (lay_mem + need_free_size, lay_mem, block->free_ - lay_mem);
-
-    ( *(uint_t*) lay_mem) = 0U; /* ptr */
-    ++((uint_t*) lay_mem);
-  }
-  else
-  {
-    lay_mem = block->data_;
-    need_free_size -= sizeof (uint_t); /* ptr */
-  }
-  //-----------------------------------------
-  *(uint_t*) lay_mem =   key->size;  ++((uint_t*) lay_mem);
-  *(uint_t*) lay_mem = value->size;  ++((uint_t*) lay_mem);
-  //-----------------------------------------
-  memmove (lay_mem,   key->data,   key->size); lay_mem += key->size;
-  memmove (lay_mem, value->data, value->size); lay_mem += value->size;
-  //-----------------------------------------
-  block->free_ += need_free_size;
-  block->head_->free_size_ -= need_free_size;
-  //-----------------------------------------
-  ++(*(block_nkvs (block)));
-  //-----------------------------------------
-#define _DEBUG
-#ifdef  _DEBUG
-  for ( int i = 0; i < *block_nkvs (block) * 5 + 5; ++i )
-    printf (" %x", ((int*) block->memory_)[i]);
-  printf ("\n\n");
-#endif
-
-  return DONE;
-}
-eDBState  block_delete (IN sBlock *block, IN const sDBT *key)
-{
-  eDBState  result = FAIL;
-  //-----------------------------------------
-  uint_t vsz = 0;
-  sDBT iter = { 0 };
-  sDBT   *k = block_key_next (block, &iter, &vsz);
-  while ( k && key < k )
-  {
-    k = block_key_next (block, k, NULL);
-  }
-  //-----------------------------------------
-  if ( k && !key_compare (key, k) )
-  {
-    uint_t  sz_mem = k->size + vsz + 3 * sizeof (uint_t);
-
-    uchar_t *lay_mem = (uchar_t*) k->data - 3 * sizeof (uint_t);
-    memcpy (lay_mem, lay_mem + sz_mem, sz_mem);
-
-    block->free_ -= sz_mem;
-    block->head_->free_size_ += sz_mem;
-    //-----------------------------------------
-    result = DONE;
-  }
-  //-----------------------------------------
-  return result;
-}
+{ return ( 4U * block->head_->free_size_ <= 3U * (block->size_ - sizeof (sDBHB)) ); }
 //-------------------------------------------------------------------------------------------------------------
 /* HIGH-LEVEL OPERATIONS */
 
@@ -269,7 +67,7 @@ eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDB
   }
   else
   {
-    sBlock *child = block_create (block->owner_db_, (*block_lptr (block, k)));
+    sBlock *child = block_create (block->owner_db_, *block_lptr (block, k));
     if ( child )
     {
       result = block_select_data (child, key, value);
@@ -318,7 +116,7 @@ eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDB
     //-----------------------------------------
     if ( block_isfull (ychild) )
     {
-      zchild = block_create (block->owner_db_, 0U);
+      zchild = block_create (block->owner_db_, MYDB_OFFSET2NEW);
       if ( !zchild )
       { result = FAIL;
         fprintf (stderr, "%s%s", error_prefix, strerror (errno));
@@ -348,8 +146,12 @@ eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDB
   } // end else
   //-----------------------------------------
 NONFULL_FREE:;
-  block_destroy (ychild); ychild = NULL;
-  block_destroy (zchild); zchild = NULL;
+  block_destroy (ychild);
+  if( zchild != ychild )
+    block_destroy (zchild);
+
+  ychild = NULL;
+  zchild = NULL;
   //-----------------------------------------
   return result;
 }
@@ -370,7 +172,7 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
     else /* block is Pass */
     {
       //-----------------------------------------
-      ychild = block_create (block, *block_lptr (block, key));
+      ychild = block_create (block->owner_db_, *block_lptr (block, key));
       if ( !ychild )
       {
         result = FAIL;
@@ -391,7 +193,7 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
          *       /   \   =>       /   \
          *      y     z       k<-y     z
          *------------------------------------------*/
-        block_recursively_delete_key_in_left_branch (ychild, key);
+        block_recursively_delete_key_in_left_branch (block, ychild, key);
       }
       else /* z has NOT enough */
       {
@@ -402,7 +204,7 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
          *         /   \
          *        z     y
          *------------------------------------------*/
-        zchild = block_create (block, block_rptr (block, key));
+        zchild = block_create (block->owner_db_, *block_rptr (block, key));
         if ( block_enough (zchild) ) /* z.nkvs >= t */
         {
           /*   находим k - следующий за key ключ в поддереве,
@@ -410,7 +212,7 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
            *   k и заменяем key в x ключом k.
            *   (поиск k за один проход вниз)
            */
-          block_recursively_delete_key_in_rght_branch (zchild, key);
+          block_recursively_delete_key_in_rght_branch (block, zchild, key);
         }
         else /* block_NOT_enough_in (z or y) */
         {
@@ -421,8 +223,8 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
   } // end if key in x
   else /* key not in x */
   {
-    uint_t ptr = 0;
-    sBlock *ychild = block_create (block, ptr); // that key in y or in child (y), ...
+    uint_t ptr = MYDB_OFFSET2NEW;
+    ychild = block_create (block->owner_db_, ptr); // that key in y or in child (y), ...
     if ( !ychild )
     {
       result = FAIL;
@@ -469,18 +271,18 @@ eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *
    *        /     =>      / \
    *      ykz            y   z
    *-----------------------------------------*/
-  (*block_type (zchild)) = (*block_type (zchild));
+  (*block_type (zchild)) = (*block_type (ychild));
   //-----------------------------------------
   /* Claculate the number of items to deligate */
-  uint_t amount_size = 0U, count = 0U, val_size;
+  uint_t amount_size = 0U, count = 0U, vsz = 0U;
 
   sDBT iter = { 0 };
-  sDBT   *k = block_key_next (ychild, &iter, &val_size);
+  sDBT   *k = block_key_next (ychild, &iter, &vsz);
   while ( k && 4U * amount_size < ychild->head_->free_size_ )
   { /* Iterate through the element, those stay in ychild */
     ++count;
-    amount_size += (k->size + val_size) + (3U * sizeof (uint_t));
-    k = block_key_next (ychild, k, &val_size);
+    amount_size += (k->size + vsz) + (3U * sizeof (uint_t));
+    k = block_key_next (ychild, k, &vsz);
   }
   /*  I hope, k cannot be equal to NULL, means,
    *  the whole block must be copied to another
@@ -496,13 +298,22 @@ eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *
   (*block_rptr (parent, k)) = zchild->offset_;
 
   ++count;
-  amount_size += (k->size + val_size) + (3U * sizeof (uint_t));
+  amount_size += (k->size + val.size) + (3U * sizeof (uint_t));
+  ychild->head_->free_size_ += (k->size + val.size) + (3U * sizeof (uint_t));
   //-----------------------------------------
   uint_t bytes_count = ((ychild->free_ - ychild->data_) - amount_size);
   memcpy (zchild->data_, ychild->data_ + amount_size, bytes_count);
+
   (*block_nkvs (zchild)) = (*block_nkvs (ychild) - count); /* latest elements of ychild */
   (*block_nkvs (ychild)) = (count - 1U);  /* remaining elements without the middle one */
+  //-----------------------------------------
   /* ptr's have already copied with elements data */
+  //-----------------------------------------
+  ychild->head_->free_size_ += bytes_count;
+  ychild->free_ = ychild->memory_ + (ychild->size_ - ychild->head_->free_size_);
+
+  zchild->head_->free_size_ -= bytes_count;
+  zchild->free_ = zchild->memory_ + (zchild->size_ - zchild->head_->free_size_);
   //-----------------------------------------
   if ( DONE != block_write (ychild, true)
     || DONE != block_write (zchild, true)
@@ -512,6 +323,11 @@ eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *
   }
   //-----------------------------------------*/
 SPLIT_FREE:;
+#ifdef  DEBUG
+  block_print_data_debug (parent, "parent");
+  block_print_data_debug (ychild, "ychild");
+  block_print_data_debug (zchild, "zchild");
+#endif
   //-----------------------------------------
   return result;
 }
@@ -535,78 +351,13 @@ eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *ychild, IN  sBlock *
   if ( ychild->head_->free_size_ < need_size )
     return FAIL;
   //-----------------------------------------
-  memset (ychild->free_, zchild->data_ - ptr_size, need_size);
+  memcpy (ychild->free_, zchild->data_ - ptr_size, need_size);
   //-----------------------------------------
   ychild->free_ += need_size;
   ychild->head_->free_size_ -= need_size;
   //-----------------------------------------
   return DONE;
 }
-//-------------------------------------------------------------------------------------------------------------
-/*
-  if key in x:
-     if x is leaf:
-        del x[key]
-     else:
-        y = child(x, key)
-        if y.nkvs >= t:
-           try:
-              while k in y and k++ < key:
-                 if y != leaf:
-                    y = child(y, k)
-                 else:
-                    del y[k]
-                    raise found
-          except:
-             pass
-          x[key] = x[k]
-           
-           находим k - предшественника key в поддереве,
-           корнем которого является y. Рекурсивно удаляем
-           k и заменяем key в x ключом k.
-           (поиск k за один проход вниз)
-        else:
-           z = child(x, key+1)
-           
-           симметрично обращаемся к дочернему по отношению
-           к x узлу z, который слудует за ключом key в узле x.
-           if z.nkvs >= t:
-               try:
-                  while k in z and ++k < key:
-                     if z != leaf:
-                        z = child(z, k)
-                     else:
-                        del z[k]
-                        raise found
-               except:
-                  pass
-               x[key] = x[k]
-
-               находим k - следующий за key ключ в поддереве,
-               корнем которого является z. Рекурсивно удаляем
-               k и заменяем key в x ключом k.
-               (поиск k за один проход вниз)
-           else:
-               y.append(key)
-               y.append([k for k in z])
-               del x[k]
-               del x.ptr to z
-               z.free
-               + рекурсивно удаляем key из y
-  else: # key not in x
-       y = child(x, i) that key in y or in child(y), ...
-       if y.nkvs < t:
-          if one y's neighbour.nkvs >= t
-             x: ..k..
-                 / \    =>   x->kv->y, z->k'v'->x
-                y   z        
-          else:
-             x: ..k..         x:.....
-                 / \    =>       /
-                y   z          ykz
-       del child(x, ?)[key]
-  //------------------------------------------------------------------------
-  */
 //-------------------------------------------------------------------------------------------------------------
 uint_t    block_offset2free (IN sDB *db)
 {
@@ -645,9 +396,9 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
     }
 
     block->head_ = (sDBHB*) block->memory_;
-    if ( offset && offset < db->head_.block_count_ )
+    if ( offset != MYDB_OFFSET2NEW && offset < db->head_.block_count_ )
     {
-      block->head_->db_offset_ = offset;
+      block->offset_ = offset;
       if ( DONE != block_read (block) )
       {
         fail = true;
@@ -656,7 +407,7 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
         goto BLOCK_FREE;
       }
     }
-    else if ( offset )
+    else if ( offset != MYDB_OFFSET2NEW )
     {
       fail = true;
       mydb_errno = MYDB_ERR_FPARAM;
@@ -674,7 +425,7 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
         goto BLOCK_FREE;
       }
 
-      block->head_->free_size_ = block->size_ - sizeof (sDBFH);
+      block->head_->free_size_ = block->size_ - sizeof (sDBHB);
       block->head_->kvs_count_ = 0U;
       block->head_->node_type_ = Free;
       block->head_->pointer_0_ = 0U;

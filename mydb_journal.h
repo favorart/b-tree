@@ -1,8 +1,8 @@
 ﻿#include "stdafx.h"
 #include "mydb.h"
 
-#ifndef _JOURNAL_H_
-#define _JOURNAL_H_
+#ifndef _MYDB_JOURNAL_H_
+#define _MYDB_JOURNAL_H_
 //-------------------------------------------------------------------------------------------------------------
 typedef struct Logging sLog;
 struct Logging
@@ -32,4 +32,4 @@ eDBState  log_seek  (sLog *log);
  */
 sLogRec*  log_read_next ();
 //-------------------------------------------------------------------------------------------------------------
-#endif // _JOURNAL_H_
+#endif // _MYDB_JOURNAL_H_

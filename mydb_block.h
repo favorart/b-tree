@@ -2,13 +2,14 @@
 #include "mydb_error.h"
 #include "mydb.h"
 
-#ifndef _BLOCK_H_
-#define _BLOCK_H_
+#ifndef _MYDB_BLOCK_H_
+#define _MYDB_BLOCK_H_
+#define  MYDB_OFFSET2NEW   ((uint_t)(-1))
 //-------------------------------------------------------------------------------------------------------------
-/* db node type */
+/* DB Node type */
 typedef enum DBNT eDBNT;
 enum DBNT // : uchar_t
-{ Free, Pass, Leaf /* , Root */ };
+{ Free = 0, Pass = 1, Leaf = 2 /* , Root=4 */ };
 //-------------------------------------------------------------------------------------------------------------
 /* Memory Block */
 typedef struct DBHB sDBHB;
@@ -73,4 +74,4 @@ eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key);
 eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *zchild);
 eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *ychild, IN  sBlock *zchild);
 //-------------------------------------------------------------------------------------------------------------
-#endif // _BLOCK_H_
+#endif // _MYDB_BLOCK_H_

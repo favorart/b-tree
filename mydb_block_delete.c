@@ -1,12 +1,8 @@
 #include "stdafx.h"
+#include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
 
-eDBState  block_delete (IN sBlock *block, IN const sDBT *key);
-eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *ychild, IN  sBlock *zchild);
-//-------------------------------------------------------------------------------------------------------------
-uint_t    block_key_data (IN sBlock *block, IN const sDBT *key, OUT void **data);
-sDBT*     block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz);
 //-------------------------------------------------------------------------------------------------------------
 typedef struct childs_list sChList;
 struct childs_list
@@ -25,7 +21,7 @@ void  childs_list_free (sChList *head)
     free (l_child);
   }
 }
-
+//-------------------------------------------------------------------------------------------------------------
 bool  block_recursively_delete_key_in_left_branch (IN sBlock *parent, IN sBlock *ychild, IN const sDBT *key)
 {
   const char *error_prefix = "memory block left branch";
@@ -117,15 +113,15 @@ bool  block_recursively_delete_key_in_rght_branch (IN sBlock *parent, IN sBlock 
   //-----------------------------------------
   if ( (*block_type (zchild)) == Leaf )
   {
-    sDBT* val = { 0 };
-    uint_t val_sz = block_key_value (zchild, k, val);
+    sDBT val = { 0 };
+    val.size = block_key_data (zchild, k, &val.data);
     //-----------------------------------------------
     block_delete (zchild, k);
     // ?!?!?! Get k value - ThatS RECURSION 
   }
   else
   {
-    block_recursively_delete_key_in_rght_branch (zchild, key);
+    block_recursively_delete_key_in_rght_branch (parent, zchild, key);
   }
   // block_delete (parent, key);
   // block_insert (parent, k, value);

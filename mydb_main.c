@@ -14,15 +14,19 @@ int  main (void)
  {
   uint_t k, d, sz = sizeof (int);
   
-  k = 0xFFFFFFFF;
-  d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
-
   k = 0xEEEEEEEE;
   d = 0xDDDDDDDD;
   db_put (mydb, &k, sz, &d, sz);
 
   k = 0xCCCCCCCC;
+  d = 0xDDDDDDDD;
+  db_put (mydb, &k, sz, &d, sz);
+
+  k = 0xFFFFFFFF;
+  d = 0x44444444;
+  db_put (mydb, &k, sz, &d, sz);
+
+  k = 0xFFFFFFFF;
   d = 0xDDDDDDDD;
   db_put (mydb, &k, sz, &d, sz);
 
