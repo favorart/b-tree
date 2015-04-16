@@ -24,4 +24,4 @@ uint_t    block_key_data (IN sBlock *block, IN const sDBT *key, OUT void **data)
 int       block_print_data_debug (IN sBlock *block, IN const char *name);
 #endif
 //-------------------------------------------------------------------------------------------------------------
-#endif _MYDB_BLOCK_LOW_H_
+#endif // _MYDB_BLOCK_LOW_H_
