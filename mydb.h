@@ -82,10 +82,8 @@ struct DB
   //---------------------------------------------
 }; /* Need for supporting multiple backends (HASH/BTREE) */
 //-------------------------------------------------------------------------------------------------------------
-#define dbcreate  db_create
-#define dbopen    db_create
-/* Open DB, if it exists, otherwise create DB */
-sDB* db_create (const char *file, const sDBC conf);
+sDB* dbcreate (const char *file, const sDBC conf);
+sDB* dbopen   (const char *file, const sDBC conf);
 
 int  db_close  (sDB *);
 int  db_del    (sDB *, void *, size_t);

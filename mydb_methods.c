@@ -4,12 +4,35 @@
 
 //-------------------------------------------------------------------------------------------------------------
 /* INTERFACE */
+sDB* db_create (IN const char *file, IN const sDBC conf);
+
+sDB* dbcreate  (const char *file, const sDBC conf)
+{
+  return db_create (file, conf);
+}
+sDB* dbopen    (const char *file, const sDBC conf)
+{
+  return db_create (file, conf);
+}
+//-------------------------------------------------------------------------------------------------------------
+int  db_header_write (IN sDB *db)
+{
+  //-----------------------------------------
+  if ( lseek (db->hfile_, 0, SEEK_SET)
+    || write (db->hfile_, &db->head_, sizeof (sDBFH)) != sizeof (sDBFH) )
+  {
+    fprintf (stderr, "DB Header: %s\n", strerror (errno));
+    return 1;
+  }
+  //-----------------------------------------
+  return 0;
+}
 
 int  db_unplug (IN sDB *db);
 int  db_delete (IN sDB *db, IN const sDBT *key);
 int  db_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data);
 int  db_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data);
-int  db_flush (IN sDB *db);
+int  db_flush  (IN sDB *db);
  //-------------------------------------------------------------------------------------------------------------
 /*  -1 = (this_key > that_key); 0 = (this_key == that_key); 1 = (this_key < that_key)  */
 int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
@@ -21,6 +44,7 @@ int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
   return res;
 }
 //-------------------------------------------------------------------------------------------------------------
+/* Open DB, if it exists, otherwise create DB */
 sDB* db_create (IN const char *file, IN const sDBC conf)
 {
   const char *error_prefix = "mydb creation";
@@ -72,7 +96,7 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
   //-----------------------------------------
   if ( file_exists ) /* open existing file */
   {
-    if ( read (db->hfile_, &db->head_, sizeof (sDBC)) != sizeof (sDBC) )
+    if ( read (db->hfile_, &db->head_, sizeof (sDBFH)) != sizeof (sDBFH) )
     {
       fail = true;
       fprintf (stderr, "%s%s\n", error_prefix, strerror (errno));
@@ -106,7 +130,7 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
     mydb_file_size = (db->head_.block_count_) * conf.page_size - 1U;
 
     /* (File-Header + Memory-Blocks) allocate*/
-    if ( write (db->hfile_, &conf, sizeof (sDBFH)) != sizeof (sDBFH)
+    if ( write (db->hfile_, &db->head_, sizeof (sDBFH)) != sizeof (sDBFH)
       || lseek (db->hfile_, mydb_file_size, SEEK_CUR) != mydb_file_size + sizeof (sDBFH)
       || write (db->hfile_, &c,  sizeof (uchar_t)) != sizeof (uchar_t))
     {
@@ -146,6 +170,9 @@ sDB* db_create (IN const char *file, IN const sDBC conf)
   if ( !file_exists )
   {
     (*block_type (db->root_)) = Leaf;
+    db->head_.offset2root_ = db->root_;
+    if ( db_header_write (db) )
+      fail = true;
   }
   //-----------------------------------------
 MYDB_FREE:
@@ -161,28 +188,28 @@ int  db_unplug (IN sDB *db)
 {
   if ( db )
   {
-    //-----------------------
-    if ( write (db->hfile_, &db->head_,
-                sizeof (sDBFH)) != sizeof (sDBFH) )
-      fprintf (stderr, "mydb destruction%s DB Header\n",
-              strerror (errno));
-    //-----------------------
+    //-----------------------------------------
+    db_header_write (db);
+    //-----------------------------------------
     techb_sync (db);
     for ( uint_t i = 0U; i < db->head_.techb_count_; ++i )
       techb_destroy (&db->techb_arr_[i]);
     free (db->techb_arr_);
     db->techb_arr_ = NULL;
-    //-----------------------
+    //-----------------------------------------
     block_destroy (db->root_);
-    //-----------------------
+    //-----------------------------------------
     close (db->hfile_);
     free  (db);
-    //-----------------------
+    //-----------------------------------------
   }
   return 0;
 }
 int  db_delete (IN sDB *db, IN const sDBT *key)
-{ return block_deep_delete (db->root_, key); }
+{
+  return block_deep_delete (db->root_, key)
+         || db_header_write (db);
+}
 int  db_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
 {
   int  result = 0;
@@ -220,7 +247,7 @@ int  db_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
     result = block_add_nonfull (rb, key, data);
   }
   //-----------------------------------------
-  return result;
+  return result || db_header_write (db);
 }
 int  db_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data)
 { return block_select_data (db->root_, key, data); }
