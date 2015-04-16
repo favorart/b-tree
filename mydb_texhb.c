@@ -31,9 +31,10 @@ eTBState   techb_set_bit (IN sDB *db, IN uint32_t offset, IN  bool  bit)
   decompose (offset, sz_techb, &ipage, &ibyte, &ibit);
   byte  = (&db->techb_arr_[ipage].memory_[ibyte]);
 
-   if ( bit ) *byte |=  (1U << (MYDB_BITSINBYTE - ibit - 1U));
-   else       *byte &= ~(1U << (MYDB_BITSINBYTE - ibit - 1U));
+  if ( bit ) *byte |=  (1U << (MYDB_BITSINBYTE - ibit - 1U));
+  else       *byte &= ~(1U << (MYDB_BITSINBYTE - ibit - 1U));
   //-----------------------------------------
+  db->techb_arr_[ipage].dirty_ = true;
   return DONE;
 }
 /* returns the value of a bit by given offset */
@@ -72,6 +73,8 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
         { 
           *byte |= (1U << (MYDB_BITSINBYTE - ibit - 1U));
           compose (&db->techb_last_free, sz_techb, ipage, ibyte, ibit);
+
+          db->techb_arr_[ipage].dirty_ = true;
           return db->techb_last_free;          
         }
       }

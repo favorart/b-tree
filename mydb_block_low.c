@@ -109,11 +109,9 @@ eDBState  block_seek   (IN sBlock *block, IN bool mem)
   //           == sizeof (sDBFH)) ? DONE : FAIL;
   // }
   //-----------------------------------------
-  long offset = sizeof (sDBFH) + block->offset_
-    * block->owner_db_->head_.page_size_;
+  long  offset = sizeof (sDBFH) + block->offset_ * block->size_;
   if ( mem )
-    offset += block->owner_db_->head_.techb_count_
-    * block->owner_db_->head_.page_size_;
+    offset += block->owner_db_->head_.techb_count_ * block->size_;
   //-----------------------------------------
   /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
   return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;

@@ -9,7 +9,7 @@ int  main (void)
  conf.db_size = 700;
  conf.page_size = 100;
 
- sDB *mydb = db_create ("db.dat", conf);
+ sDB *mydb = dbcreate ("db.dat", conf);
  if ( mydb )
  {
   uint_t k, d, sz = sizeof (int);
@@ -39,7 +39,7 @@ int  main (void)
   db_put (mydb, &k, sz, &d, sz);
  
   int *v = NULL;
-  db_get (mydb, &k, sz, &v, &sz);
+  db_get (mydb, &k, sz, (void**) &v, &sz);
 
   printf ("%x\n%d", *v, sizeof (sDBHB));
  }
