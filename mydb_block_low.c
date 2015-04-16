@@ -33,12 +33,12 @@ sDBT*     block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz)
     {
       key->size = 0;
       key->data = NULL;
-      if ( vsz ) *vsz = NULL;
+      if ( vsz ) *vsz = 0;
 
       return NULL;
     }
 
-    if ( vsz ) *vsz = ((uint_t*) key->data - 1);
+    if ( vsz ) *vsz = *((uint_t*) key->data - 1);
     return key;
   } // end else
 }

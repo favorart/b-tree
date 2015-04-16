@@ -1,5 +1,5 @@
 ﻿#include "stdafx.h"
-#include "journal.h"
+#include "mydb_journal.h"
 
 /*   Формат журнала
  *   
