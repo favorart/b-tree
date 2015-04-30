@@ -19,10 +19,10 @@
 #pragma warning (disable : 4996) // safe-windows functions
 #pragma warning (disable : 4047) // pointer to function in a return
 
-/*  Values for the second argument to access */
-#define F_OK  0  /* Test for existence.  */
-#define W_OK  2  /* Test for write permission.  */
-#define R_OK  4  /* Test for read permission.  */
+/*  Values for the second argument to access.  */
+#define F_OK  0  /* Test for existance.        */
+#define W_OK  2  /* Test for write permission. */
+#define R_OK  4  /* Test for read  permission. */
 
 #include <io.h>
 #else

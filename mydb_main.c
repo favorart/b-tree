@@ -9,37 +9,37 @@ int  main (void)
  conf.db_size = 700;
  conf.page_size = 100;
 
- sDB *mydb = dbcreate ("db.dat", conf);
+ sDB *mydb = dbcreate ("db.dat", &conf);
  if ( mydb )
  {
   uint_t k, d, sz = sizeof (int);
   
   k = 0xEEEEEEEE;
   d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
 
   k = 0xCCCCCCCC;
   d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
 
   k = 0xFFFFFFFF;
   d = 0x44444444;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
 
   k = 0xFFFFFFFF;
   d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
 
   k = 0xBBBBBBBB;
   d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
 
   k = 0xAAAAAAAA;
   d = 0xDDDDDDDD;
-  db_put (mydb, &k, sz, &d, sz);
+  db_insert (mydb, &k, sz, &d, sz);
  
   int *v = NULL;
-  db_get (mydb, &k, sz, (void**) &v, &sz);
+  db_select (mydb, &k, sz, (void**) &v, &sz);
 
   printf ("%x\n%d", *v, sizeof (sDBHB));
  }
