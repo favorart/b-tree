@@ -2,7 +2,7 @@
 #include "mydb.h"
 
 //-------------------------------------------------------------------------------------------------------------
-int  db_close  (sDB *db)
+int  db_close (sDB *db)
 { return (db) ? db->close (db) : 0; }
 int  db_delete (sDB *db, void *key, size_t key_len)
 {
@@ -24,10 +24,10 @@ int  db_select (sDB *db, void *key, size_t key_len, void **val, size_t *val_len)
 }
 int  db_insert (sDB *db, void *key, size_t key_len, void  *val, size_t  val_len)
 {
- struct DBT keyt = { .data = key,
-                     .size = key_len };
- struct DBT valt = { .data = val,
-                     .size = val_len };
- return db->insert (db, &keyt, &valt);
+  struct DBT keyt = { .data = key,
+    .size = key_len };
+  struct DBT valt = { .data = val,
+    .size = val_len };
+  return db->insert (db, &keyt, &valt);
 }
 //-------------------------------------------------------------------------------------------------------------

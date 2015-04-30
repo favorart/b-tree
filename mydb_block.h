@@ -5,6 +5,7 @@
 #ifndef _MYDB_BLOCK_H_
 #define _MYDB_BLOCK_H_
 #define  MYDB_OFFSET2NEW   ((uint_t)(-1))
+#define  MYDB_INVALIDPTR   ((uint_t)(-1))
 //-------------------------------------------------------------------------------------------------------------
 /* DB Node type */
 typedef enum DBNT eDBNT;
@@ -72,6 +73,6 @@ eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDB
 eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *zchild);
-eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *ychild, IN  sBlock *zchild);
+eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *lchild, IN  sBlock *rchild, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_BLOCK_H_

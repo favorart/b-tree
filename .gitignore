@@ -38,3 +38,16 @@ tr.cpp
 *.log
 *.unsuccessfulbuild
 *.lastbuildstate
+VisualGDBCache/libbtree-Debug/SourceCache.dat
+libbtree-Release.vgdbsettings
+libbtree-Debug.vgdbsettings
+release.mak
+Makefile.old
+gcc_Release.h
+Makefile
+gcc_Debug.h
+debug.mak
+debug.mak.old
+libbtree.cpp
+libbtree.vcxproj
+libbtree.h

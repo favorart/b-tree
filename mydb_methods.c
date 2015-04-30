@@ -5,11 +5,11 @@
 //-------------------------------------------------------------------------------------------------------------
 /* INTERFACE */
 sDB* mydb_create (IN const char *file, IN const sDBC *conf);
-int  mydb_close  (IN sDB *db);
+int  mydb_close (IN sDB *db);
 int  mydb_delete (IN sDB *db, IN const sDBT *key);
 int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data);
 int  mydb_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data);
-int  mydb_sync   (IN sDB *db);
+int  mydb_sync (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
 int  db_header_write (IN sDB *db)
 {
@@ -38,7 +38,7 @@ sDB* dbcreate (const char *file, const sDBC *conf)
 {
   return mydb_create (file, conf);
 }
-sDB* dbopen   (const char *file, const sDBC *conf)
+sDB* dbopen (const char *file, const sDBC *conf)
 {
   return mydb_create (file, conf);
 }
@@ -68,11 +68,11 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
     goto MYDB_FREE;
   }
   //-----------------------------------------
-  db->close  = &mydb_close;
+  db->close = &mydb_close;
   db->delete = &mydb_delete;
   db->select = &mydb_select;
   db->insert = &mydb_insert;
-  db->sync   = &mydb_sync;
+  db->sync = &mydb_sync;
   //-----------------------------------------
   /* Check for db file existence */
   if ( access (file, F_OK | R_OK | W_OK) != -1 )
@@ -102,8 +102,8 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
       goto MYDB_FREE;
     } // end if read
 
-    if ( db->head_.db_size_   != conf->db_size
-      || db->head_.page_size_ != conf->page_size )
+    if ( db->head_.db_size_ != conf->db_size
+        || db->head_.page_size_ != conf->page_size )
     {
       fail = true;
       mydb_errno = MYDB_ERR_FPARAM;
@@ -119,19 +119,19 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
     uchar_t  c = 0;
     long  mydb_file_size = 0L;
 
-    db->head_.db_size_     =  conf->db_size;
-    db->head_.page_size_   =  conf->page_size;
+    db->head_.db_size_ = conf->db_size;
+    db->head_.page_size_ = conf->page_size;
     db->head_.block_count_ = (conf->db_size - sizeof (sDBFH)) / conf->page_size;
     db->head_.nodes_count_ = (0U);
-    db->head_.techb_count_ = (db->head_.block_count_ - 1U)  / MYDB_BITSINBYTE + 1U; /* round to large integer */
+    db->head_.techb_count_ = (db->head_.block_count_ - 1U) / MYDB_BITSINBYTE + 1U; /* round to large integer */
     db->head_.offset2root_ = MYDB_OFFSET2NEW; /* first non-tech.block */
-    //-----------------------------------------
+                                              //-----------------------------------------
     mydb_file_size = (db->head_.block_count_) * conf->page_size - 1U;
 
     /* (File-Header + Memory-Blocks) allocate*/
     if ( write (db->hfile_, &db->head_, sizeof (sDBFH)) != sizeof (sDBFH)
-      || lseek (db->hfile_, mydb_file_size, SEEK_CUR) != mydb_file_size + sizeof (sDBFH)
-      || write (db->hfile_, &c,  sizeof (uchar_t)) != sizeof (uchar_t))
+        || lseek (db->hfile_, mydb_file_size, SEEK_CUR) != mydb_file_size + sizeof (sDBFH)
+        || write (db->hfile_, &c, sizeof (uchar_t)) != sizeof (uchar_t) )
     {
       fail = true;
       fprintf (stderr, "%s%s\n", error_prefix, strerror (errno));
@@ -141,7 +141,7 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
     /* Seek blocks set, after header */
     lseek (db->hfile_, sizeof (sDBFH), SEEK_SET);
   } // end else file_exists
-  //-----------------------------------------
+    //-----------------------------------------
   db->techb_arr_ = calloc (db->head_.techb_count_, sizeof (sTechB));
   if ( !db->techb_arr_ )
   {
@@ -160,12 +160,12 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
   }
   //-----------------------------------------
   db->root_ = block_create (db, db->head_.offset2root_);
-  if( !db->root_ )
+  if ( !db->root_ )
   {
     fail = true;
     goto MYDB_FREE;
   }
-  
+
   if ( !file_exists )
   {
     (*block_type (db->root_)) = Leaf;
@@ -183,7 +183,7 @@ MYDB_FREE:
   //-----------------------------------------
   return db;
 }
-int  mydb_close  (IN sDB *db)
+int  mydb_close (IN sDB *db)
 {
   if ( db )
   {
@@ -199,7 +199,7 @@ int  mydb_close  (IN sDB *db)
     block_destroy (db->root_);
     //-----------------------------------------
     close (db->hfile_);
-    free  (db);
+    free (db);
     //-----------------------------------------
   }
   return 0;
@@ -207,7 +207,7 @@ int  mydb_close  (IN sDB *db)
 int  mydb_delete (IN sDB *db, IN const sDBT *key)
 {
   return block_deep_delete (db->root_, key)
-         || db_header_write (db);
+    || db_header_write (db);
 }
 int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
 {
@@ -218,24 +218,24 @@ int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
   {
     sBlock *new_root, *new_block;
     /* alloc new free blocks */
-    new_root  = block_create (db, MYDB_OFFSET2NEW);
+    new_root = block_create (db, MYDB_OFFSET2NEW);
     new_block = block_create (db, MYDB_OFFSET2NEW);
     if ( !new_root || !new_block )
       return -1;
-    
+
     // block type of rb was Pass or Leaf
     (*block_type (new_block)) = (*block_type (rb));
 
     (*block_type (new_root)) = Pass; // Root;
     (*block_nkvs (new_root)) = 0;
     (*block_rptr (new_root, NULL)) = rb->offset_;
-    
+
     db->root_ = new_root;
     db->head_.offset2root_ = new_root->offset_;
-    
+
     if ( block_split_child (new_root, rb, new_block)
-      || block_add_nonfull (new_root, key, data) )
-      result = -1;
+        || block_add_nonfull (new_root, key, data) )
+        result = -1;
     //-----------------------------------------
     block_destroy (rb);
     block_destroy (new_block);
@@ -250,7 +250,7 @@ int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
 }
 int  mydb_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data)
 { return block_select_data (db->root_, key, data); }
-int  mydb_sync   (IN sDB *db)
+int  mydb_sync (IN sDB *db)
 {
   /* cache */
   return 0;

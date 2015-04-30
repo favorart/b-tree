@@ -9,19 +9,22 @@ eDBState  block_read  (IN sBlock *block);
 eDBState  block_seek  (IN sBlock *block, IN bool mem);
 eDBState  block_write (IN sBlock *block, IN bool mem);
 //-------------------------------------------------------------------------------------------------------------
-bool      block_recursively_delete_key_in_left_branch (IN sBlock *parent, IN sBlock *ychild, IN const sDBT *key);
-bool      block_recursively_delete_key_in_rght_branch (IN sBlock *parent, IN sBlock *zchild, IN const sDBT *key);
-//-------------------------------------------------------------------------------------------------------------
 uint_t    block_offset2free (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
-eDBState  block_insert (IN sBlock *block, OUT      sDBT *key, IN const sDBT *value);
+/* !!! non-malloc'ed output */
+eDBState  block_select (IN sBlock *block, IN const sDBT *key, OUT      sDBT *value, OUT    sDBT *bkey);
+eDBState  block_change (IN sBlock *block, IN const sDBT *key, IN const sDBT *value, IN OUT sDBT *bkey);
+eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *value, OUT    sDBT *bkey, uint_t Rptr);
 eDBState  block_delete (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 sDBT*     block_key_next (IN sBlock *block, IN       sDBT *key, OUT uint_t *vsz);
-uint_t    block_key_data (IN sBlock *block, IN const sDBT *key, OUT void **data);
-#define DEBUG
+sDBT      block_key_data (IN sBlock *block, IN const sDBT *key);
+// #define DEBUG
 #ifdef  DEBUG
-int       block_print_data_debug (IN sBlock *block, IN const char *name);
+int       block_print_dbg (IN sBlock *block, IN const char *name);
 #endif
+//-------------------------------------------------------------------------------------------------------------
+bool  block_recursively_delete_key_in_left_branch (IN sBlock *parent, IN sBlock *ychild, IN const sDBT *key);
+bool  block_recursively_delete_key_in_rght_branch (IN sBlock *parent, IN sBlock *zchild, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_BLOCK_LOW_H_
