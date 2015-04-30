@@ -82,13 +82,13 @@ struct DB
   //---------------------------------------------
 }; /* Need for supporting multiple backends (HASH/BTREE) */
 //-------------------------------------------------------------------------------------------------------------
-sDB* dbcreate (const char *file, const sDBC conf);
-sDB* dbopen   (const char *file, const sDBC conf);
+sDB* dbcreate (const char *file, const sDBC *conf);
+sDB* dbopen   (const char *file, const sDBC *conf);
 
 int  db_close  (sDB *);
-int  db_del    (sDB *, void *, size_t);
-int  db_get    (sDB *, void *, size_t, void **, size_t *);;
-int  db_put    (sDB *, void *, size_t, void * , size_t  );
+int  db_delete (sDB *, void *, size_t);
+int  db_select (sDB *, void *, size_t, void **, size_t *);;
+int  db_insert (sDB *, void *, size_t, void * , size_t  );
 /* Syncronize the cached blocks with data on a disk */
 int  db_sync   (sDB *db);
 //-------------------------------------------------------------------------------------------------------------

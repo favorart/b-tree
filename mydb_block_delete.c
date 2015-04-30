@@ -3,7 +3,22 @@
 #include "mydb_block.h"
 #include "mydb_techb.h"
 
+void  block_keep_enough_kvs  (IN sBlock *parent)
+{
+  /*-----------------------------------------
+   *  находим k - предшественника key в поддереве,
+   *  корнем которого является y. Рекурсивно 
+   *  удаляем k и заменяем key в x ключом k.
+   *  (поиск k за один проход вниз)
+   *
+   *   x: ..key..      x: ..(k->key)..
+   *       /   \   =>          /   \
+   *      y     z             y->k  z
+   *-----------------------------------------*/
+  return;
+}
 //-------------------------------------------------------------------------------------------------------------
+/* unwind the recursion cycle */
 typedef struct childs_list sChList;
 struct childs_list
 {
