@@ -14,6 +14,7 @@ const char* strmyerror (e_mydb_err err)
     case MYDB_ERR_OFFSET : strerr = ": Invalid offset for disk action."; break;
     case MYDB_ERR_NFREEB : strerr = ": No free block for node in file."; break;
     case MYDB_ERR_NFREES : strerr = ": No free space for key in block."; break;
+    case MYDB_ERR_CCHSET : strerr = ": Fault inserting block to cache."; break;
   }
   //-----------------------------------------
   mydb_errno = MYDB_ERR_NONE;
