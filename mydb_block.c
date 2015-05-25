@@ -173,7 +173,6 @@ NONFULL_FREE:;
   //-----------------------------------------
   return result;
 }
-
 eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
 {
   const char *error_prefix = "memory block deep delete";
