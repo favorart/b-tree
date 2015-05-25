@@ -159,7 +159,7 @@ eDBState block_deep_del (IN sBlock *block, IN const sDBT *key)
 
     if ( !key_compare (k, key) )
     {
-      block_delete (rec_list->parent, key);
+      // block_delete (rec_list->parent, key);
     }
     else
     {
@@ -178,8 +178,8 @@ eDBState block_deep_del (IN sBlock *block, IN const sDBT *key)
     kkey = k ? k : prev_k;
 
     sDBT val = block_key_data (block, kkey);
-    block_change (match, key, &val, kkey);
-    block_delete (rec_list->parent, kkey);
+    // block_change (match, key, &val, kkey);
+    // block_delete (rec_list->parent, kkey);
   }
   //-----------------------------------------
 DDEL_FREE:;
@@ -213,13 +213,13 @@ bool  block_recursive_descent (IN sBlock *parent, IN sBlock *lchild, IN sBlock *
     sDBT val = block_key_data (parent, k);
 
     block_insert (lchild, k, &val, NULL, MYDB_INVALIDPTR);
-    block_delete (parent, k); // MOVING!!!
+    // block_delete (parent, k); // MOVING!!!
 
       k = block_key_next (rchild, &iter, NULL);
     val = block_key_data (rchild, k);
 
     block_insert (parent, k, &val, NULL, MYDB_INVALIDPTR);
-    block_delete (rchild, k);
+    // block_delete (rchild, k);
   }
   //-----------------------------------------
   // rotate right
@@ -357,3 +357,45 @@ RBRANCH_FREE:;
   return fail;
 }
 //-------------------------------------------------------------------------------------------------------------
+eDBState  block_rotate_left (IN sBlock *block, IN sDBT *key)
+{
+
+  // get last
+
+  // sDBT  iter = { 0 }, val = { 0 };
+  // sDBT  *k = block_key_next (parent, &iter, NULL);
+  // val.size = block_key_data (parent, &iter, &val);
+
+  sDBT iter = { 0 }, *k_prev = NULL;
+  sDBT   *k = block_key_next (block, &iter, NULL);
+  while ( k && key_compare (key, k) < 0 )
+  {
+    k = block_key_next (block, k, NULL);
+    k_prev = k;
+  }
+
+  sDBT val = block_key_data (block, k_prev);
+
+
+
+  return DONE;
+}
+eDBState  block_rotate_rght (IN sBlock *block, IN sBlock *lchild, IN sBlock *rchild, IN const sDBT *key)
+{
+  sDBT cur_k = { 0 }, value = { 0 };
+
+  // get first
+  if ( DONE != block_select (block, key, &cur_k, &value) )
+    return FAIL;
+
+  // sBlock *lchild = block_create (block, block_lptr (block, &cur_k));
+  // sBlock *rchild = block_create (block, block_rptr (block, &cur_k));
+
+  // block_change ();
+
+
+  return DONE;
+}
+// eDBState  block_rotate_left (IN sBlock *block, IN sDBT *key);
+//-------------------------------------------------------------------------------------------------------------
+

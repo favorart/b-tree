@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 //-------------------------------------------------------------------------------------------------------------
 #define IN
 #define OUT
@@ -47,5 +48,12 @@ typedef int              HFILE;
 typedef unsigned char  uchar_t;
 typedef uint32_t        uint_t;
 typedef uint64_t       ulong_t;
+//-------------------------------------------------------------------------------------------------------------
+#define SWAP(X,Y) \
+    do { unsigned char _buf[sizeof (*(X))]; \
+         memmove(_buf, (X), sizeof (_buf)); \
+         memmove((X),  (Y), sizeof (_buf)); \
+         memmove((Y), _buf, sizeof (_buf)); \
+       } while (0)
 //-------------------------------------------------------------------------------------------------------------
 #endif // _STDAFX_H_
