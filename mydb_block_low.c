@@ -246,6 +246,18 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
   uchar_t *lay_mem = NULL;
   if ( k && !key_compare (k, key) )
   {
+#ifdef _DEBUG
+    char str[100];
+
+    memset (str, 0, 100);
+    memcpy (str, key->data, key->size);
+    printf ("'%s'=", str);
+
+    memset (str, 0, 100);
+    memcpy (str, k->data, k->size);
+    printf ("'%s'\n", str);
+#endif // _DEBUG
+
     /* if there is the equal key */
     sDBT val = block_key_data (block, k);
 

@@ -1,15 +1,17 @@
 ﻿#include "stdafx.h"
+#include "mydb_low.h"
 #include "mydb.h"
 
-
 //-------------------------------------------------------------------------------------------------------------
-/* Returns -1 = (this > that); 0 = (this == that); 1 = (this < that)  */
+/* Returns -1 = (this < that); 0 = (this == that); 1 = (this > that)  */
 int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
-{ // if ( this_key->size != that_key->size )
-  //  return (this_key->size > that_key->size) ? 1 : -1;
-  int res = memcmp (this_key->data, that_key->data, // this_key->size);
-                    (this_key->size <= that_key->size) ?
-                    this_key->size : that_key->size);
+{
+  int res = (this_key->size < that_key->size) ? -1 :
+    (this_key->size > that_key->size) ? 1 : 0;
+
+  if ( !res )
+    res = memcmp (this_key->data, that_key->data, this_key->size);
+
   return res;
 }
 //-------------------------------------------------------------------------------------------------------------
