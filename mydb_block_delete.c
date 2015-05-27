@@ -1,8 +1,7 @@
-#include "stdafx.h"
+п»ї#include "stdafx.h"
 #include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
-
 
 //-------------------------------------------------------------------------------------------------------------
 typedef struct childs_list sChList;
@@ -37,7 +36,7 @@ void  childs_list_free (sChList *head)
   }
 }
 
-// реккурсивный спуск
+// СЂРµРєСѓСЂСЃРёРІРЅС‹Р№ СЃРїСѓСЃРє
 bool  block_recursive_descent (IN sBlock *parent, IN sBlock *lchild, IN sBlock *rchild, IN const sDBT *key, bool is_right);
 
 eDBState block_deep_del (IN sBlock *block, IN const sDBT *key)
@@ -199,10 +198,10 @@ bool  block_recursive_descent (IN sBlock *parent, IN sBlock *lchild, IN sBlock *
   if ( !block_enough (lchild) && block_enough (rchild) )
   {
     /*-----------------------------------------
-     *  находим k - предшественника key в поддереве,
-     *  корнем которого является lchild. Рекурсивно
-     *  удаляем k и заменяем key в parent ключом k.
-     *  (поиск k за один проход вниз)
+     *  РЅР°С…РѕРґРёРј k - РїСЂРµРґС€РµСЃС‚РІРµРЅРЅРёРєР° key РІ РїРѕРґРґРµСЂРµРІРµ,
+     *  РєРѕСЂРЅРµРј РєРѕС‚РѕСЂРѕРіРѕ СЏРІР»СЏРµС‚СЃСЏ lchild. Р РµРєСѓСЂСЃРёРІРЅРѕ
+     *  СѓРґР°Р»СЏРµРј k Рё Р·Р°РјРµРЅСЏРµРј key РІ parent РєР»СЋС‡РѕРј k.
+     *  (РїРѕРёСЃРє k Р·Р° РѕРґРёРЅ РїСЂРѕС…РѕРґ РІРЅРёР·)
      *
      *  par: ..key..      par: ..(key<-k)..
      *        /   \    =>       /        \
@@ -226,14 +225,14 @@ bool  block_recursive_descent (IN sBlock *parent, IN sBlock *lchild, IN sBlock *
   if ( block_enough (lchild) && !block_enough (rchild) )
   {
     /*-----------------------------------------
-     *   находим k - следующий за key ключ в поддереве,
-     *   корнем которого является rchild. Рекурсивно
-     *   удаляем k и заменяем key в parent ключом k.
-     *   (поиск k за один проход вниз)
+     *   РЅР°С…РѕРґРёРј k - СЃР»РµРґСѓСЋС‰РёР№ Р·Р° key РєР»СЋС‡ РІ РїРѕРґРґРµСЂРµРІРµ,
+     *   РєРѕСЂРЅРµРј РєРѕС‚РѕСЂРѕРіРѕ СЏРІР»СЏРµС‚СЃСЏ rchild. Р РµРєСѓСЂСЃРёРІРЅРѕ
+     *   СѓРґР°Р»СЏРµРј k Рё Р·Р°РјРµРЅСЏРµРј key РІ parent РєР»СЋС‡РѕРј k.
+     *   (РїРѕРёСЃРє k Р·Р° РѕРґРёРЅ РїСЂРѕС…РѕРґ РІРЅРёР·)
      *
-     *   (симметрично обращаемся к дочернему по отношению
-     *    к parent узлу rchild, который слудует за ключом
-     *    key в узле parent)
+     *   (СЃРёРјРјРµС‚СЂРёС‡РЅРѕ РѕР±СЂР°С‰Р°РµРјСЃСЏ Рє РґРѕС‡РµСЂРЅРµРјСѓ РїРѕ РѕС‚РЅРѕС€РµРЅРёСЋ
+     *    Рє parent СѓР·Р»Сѓ rchild, РєРѕС‚РѕСЂС‹Р№ СЃР»СѓРґСѓРµС‚ Р·Р° РєР»СЋС‡РѕРј
+     *    key РІ СѓР·Р»Рµ parent)
      *
      *  par: ..key..      par: ..(k->key)..
      *        /   \    =>       /        \
@@ -396,6 +395,5 @@ eDBState  block_rotate_rght (IN sBlock *block, IN sBlock *lchild, IN sBlock *rch
 
   return DONE;
 }
-// eDBState  block_rotate_left (IN sBlock *block, IN sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 

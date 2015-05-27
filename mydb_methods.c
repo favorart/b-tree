@@ -2,6 +2,8 @@
 #include "mydb_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
+#include "mydb_cache.h"
+#include "mydb_log.h"
 
 //-------------------------------------------------------------------------------------------------------------
 int  mydb_head_sync (IN sDB *db)
@@ -78,6 +80,14 @@ sDB* mydb_create (IN const char *file, IN const sDBC *conf)
   /* Seek blocks set, after header */
   lseek (db->hfile_, sizeof (sDBFH), SEEK_SET);
   //-----------------------------------------
+#ifndef MYDB_NOCACHE
+  if ( mydb_cache_init (db) )
+  {
+    fail = true;
+    goto CREAT_FREE;
+  }
+#endif // !MYDB_NOCACHE
+  //-----------------------------------------
   db->techb_array_ = calloc (db->head_.techb_count_, sizeof (sTechB));
   if ( !db->techb_array_ )
   {
@@ -127,7 +137,7 @@ CREAT_FREE:
   //-----------------------------------------
   return db;
 }
-sDB* mydb_open (IN const char *file)
+sDB* mydb_open   (IN const char *file)
 {
   const char *error_prefix = "mydb open";
   bool  fail = false;
@@ -141,11 +151,11 @@ sDB* mydb_open (IN const char *file)
     goto OPEN_FREE;
   }
   //-----------------------------------------
-  db->close = &mydb_close;
+  db->close  = &mydb_close;
   db->delete = &mydb_delete;
   db->select = &mydb_select;
   db->insert = &mydb_insert;
-  db->sync = &mydb_flush;
+  db->sync   = &mydb_flush;
   //-----------------------------------------
   /* Check for db file existence */
   if ( access (file, F_OK | R_OK | W_OK) == -1 )
@@ -172,8 +182,16 @@ sDB* mydb_open (IN const char *file)
     fprintf (stderr, "%s%s\n", error_prefix, strerror (errno));
     fail = true;
     goto OPEN_FREE;
-  } // end if read
-    //-----------------------------------------
+  }
+
+#ifndef MYDB_NOCACHE
+  if ( mydb_cache_init (db) )
+  {
+    fail = true;
+    goto OPEN_FREE;
+  }
+#endif // !MYDB_NOCACHE
+  //-----------------------------------------
   db->techb_array_ = calloc (db->head_.techb_count_, sizeof (sTechB));
   if ( !db->techb_array_ )
   {
@@ -222,13 +240,13 @@ int  mydb_close  (IN sDB *db)
 {
   if ( db )
   {
-    mydb_flush (db);
+    if ( db->cache_ )
+    { mydb_flush (db); }
     //-----------------------------------------
     techb_sync (db);
     for ( uint_t i = 0U; i < db->head_.techb_count_; ++i )
-    {
-      techb_destroy (&db->techb_array_[i]);
-    }
+    { techb_destroy (&db->techb_array_[i]); }
+
     free (db->techb_array_);
     db->techb_array_ = NULL;
     //-----------------------------------------
@@ -236,10 +254,14 @@ int  mydb_close  (IN sDB *db)
     close (db->hfile_);
     //-----------------------------------------
 #ifndef MYDB_NOCACHE
-    mydb_cache_free (db);
+    if ( db->cache_ )
+    { mydb_cache_free (db); }
 
-    mydb_logging   (db, LOG_DB_CLS, NULL, NULL);
-    mydb_log_close (db);
+    if ( db->log_ )
+    {
+      mydb_logging   (db, LOG_DB_CLS, NULL, NULL);
+      mydb_log_close (db);
+    }
 #endif // !MYDB_NOCACHE
     //-----------------------------------------
     free (db);
@@ -254,10 +276,10 @@ int  mydb_delete (IN sDB *db, IN const sDBT *key)
   mydb_logging (db, LOG_DELETE, key, NULL);
 #endif // !MYDB_NOCACHE
   //-----------------------------------------
-  return block_deep_delete (db->root_, key)
-      ||  mydb_head_sync   (db);
+  return block_delete_deep (db->root_, key)
+      || mydb_head_sync (db);
 }
-int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
+int  mydb_insert (IN sDB *db, IN const sDBT *key, IN const sDBT *data)
 {
 #ifdef _DEBUG
   char str[100];
@@ -309,19 +331,17 @@ int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data)
   //-----------------------------------------
   return result || mydb_head_sync (db);
 }
-int  mydb_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data)
-{ return block_select_data (db->root_, key, data); }
+int  mydb_select (IN sDB *db, IN const sDBT *key, OUT      sDBT *data)
+{ return block_select_deep (db->root_, key, data); }
 int  mydb_flush  (IN sDB *db)
 {
-  int result = 0;
   //-----------------------------------------
-  /* cache */
 #ifndef MYDB_NOCACHE
-  result |= mydb_cache_sync (db);
-  mydb_logging (db, LOG_CHKPNT, NULL, NULL);
+  /* cache: disk syncronization */
+  mydb_cache_sync (db);
+  mydb_logging    (db, LOG_CHKPNT, NULL, NULL);
 #endif // !MYDB_NOCACHE
   //-----------------------------------------
-  result |= (mydb_head_sync (db) != 0);
-  return result;
+  return mydb_head_sync (db);
 }
 //-------------------------------------------------------------------------------------------------------------

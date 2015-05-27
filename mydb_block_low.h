@@ -4,17 +4,15 @@
 
 #ifndef _MYDB_BLOCK_LOW_H_
 #define _MYDB_BLOCK_LOW_H_
-
-// #define _DEBUG
 //-------------------------------------------------------------------------------------------------------------
 eDBState  block_read (IN sBlock *block);
 eDBState  block_seek (IN sBlock *block);
 eDBState  block_dump (IN sBlock *block);
 
 #ifdef MYDB_NOCACHE 
-#define  block_write  block_dump
+#define  block_write         block_dump
 #else // MYDB_NOCACHE
-#define  block_write
+#define  block_write(block)  ((block)->dirty_=true,DONE)
 #endif
 //-------------------------------------------------------------------------------------------------------------
 /* !!! non-malloc'ed output */

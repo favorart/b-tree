@@ -91,7 +91,7 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
           ++db->head_.nodes_count_;
 
 #ifdef _DEBUG
-          printf ("debug compose: page=%d byte=%d bit=%d", ipage, ibyte, ibit);
+          printf ("debug compose: page=%d byte=%d bit=%d\n", ipage, ibyte, ibit);
 #endif // _DEBUG
           compose (&db->techb_last0_, sz_techb, ipage, ibyte, ibit);
 

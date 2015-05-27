@@ -92,33 +92,6 @@ int       block_print_dbg (IN sBlock *block, IN const char *name)
 }
 #endif
 //-------------------------------------------------------------------------------------------------------------
-/*
-*   В sBlock появятся дополнительные параметры:
-*
-*      sBlock *lru_next; — для участия в lru списке
-*      sBlock *lru_prev;
-*      enum { dirty, clean } status; — страница изменена и не записана на диск
-*
-*   Алгоритм block_read модифицируется следующим образом:
-*
-*      struct page *block_read (block_id_t block_no)
-*      {
-*        /* Search for a block in the cache by ID.
-*         * If a block is found, put it first in the LRU-list, then return.
-*         * Otherwise, maybe evict some blocks, read the block from a disk,
-*         * insert into the hash, return block.
-*         * /
-*      }
-*
-*   Алгоритм block_write разбивается на 2 части:
-*   1. Непосредственно в момент модификации данных, меняется статус страницы.
-*      Если необходимо сделать вытеснение (eviction), и статус страницы == dirty,
-*      вызывается старая реализация block_write.
-*   2. Старая реализация block_write.
-*
-*   Рекомендуется сделать сначала LRU-кэш без поддержки журнала и отладить его.
-*/
-//-------------------------------------------------------------------------------------------------------------
 /* LOW-LEVEL OPERATIONS */
 
 eDBState  block_seek (IN sBlock *block)
@@ -145,20 +118,23 @@ eDBState  block_read (IN sBlock *block)
 }
 eDBState  block_dump (IN sBlock *block)
 {
-  if ( block->dirty_ )
-  {
-    //-----------------------------------------
-    /*  Грязный блок должен быть записан
-     *  на диск перед вытеснением из кэша.
-     */
-    if ( DONE != block_seek (block) )
-      return FAIL;
+#ifndef MYDB_NOCACHE
+  if ( !block->dirty_ )
+  { return DONE; }
 
-    if ( write (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-      return FAIL;
-  }
   //-----------------------------------------
+  /*  Грязный блок должен быть записан
+   *  на диск перед вытеснением из кэша.
+   */
   block->dirty_ = false;
+#endif // !MYDB_NOCACHE
+  //-----------------------------------------
+  if ( DONE != block_seek (block) )
+    return FAIL;
+
+  if ( write (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
+    return FAIL;
+  //-----------------------------------------
   return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
@@ -225,7 +201,7 @@ eDBState  block_change (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
   block_print_dbg (block, "change");
 #endif
 
-  block->dirty_ = true;
+  // block->dirty_ = true;
   return DONE;
 }
 eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *value,    OUT sDBT *bkey, IN uint_t Rptr)
@@ -246,7 +222,7 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
   uchar_t *lay_mem = NULL;
   if ( k && !key_compare (k, key) )
   {
-#ifdef _DEBUG
+#ifdef  _DEBUG
     char str[100];
 
     memset (str, 0, 100);
@@ -336,7 +312,7 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
 #endif
 
   //-----------------------------------------
-  block->dirty_ = true;
+  // block->dirty_ = true;
   return DONE;
 }
 eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
@@ -367,7 +343,7 @@ eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
     block_print_dbg (block, "delete");
 #endif
 
-    block->dirty_ = true;
+    // block->dirty_ = true;
     return DONE;
   }
   //-----------------------------------------

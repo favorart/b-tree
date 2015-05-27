@@ -3,7 +3,8 @@
 #ifndef _MYDB_H_
 #define _MYDB_H_
 
-#define  MYDB_NOCACHE     1
+// #define _DEBUG
+// #define  MYDB_NOCACHE  1
 #define  MYDB_BITSINBYTE  8U
 //-------------------------------------------------------------------------------------------------------------
 typedef enum  db_state eDBState;
