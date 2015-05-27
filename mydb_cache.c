@@ -1,7 +1,7 @@
 ﻿#include "stdafx.h"
 #include "mydb_block.h"
 #include "mydb_cache.h"
- 
+
 
 // #define _DEBUG_CACHE
 /* Перед изменением блока, запись попадает в журнал */
@@ -18,7 +18,7 @@ struct Cache_CyclicHashTable_BuldInList
 //-------------------------------------------------------------------------------------------------------------
 #define CACHE_HASH_COEF 1.5
 
-static hash_t  cache_hash (IN uint32_t offset, IN hash_t size)
+static hash_t  cache_hash     (IN uint32_t offset)
 {
   hash_t hash = 0U;
   unsigned char* pc = (unsigned char*) &offset;
@@ -33,7 +33,7 @@ static hash_t  cache_hash (IN uint32_t offset, IN hash_t size)
   hash ^= (hash >> 11);
   hash += (hash << 15);
 
-  return (hash % size);
+  return hash;
 }
 static hash_t  cache_hash_get (IN sDB *db, IN uint32_t offset)
 {
@@ -42,17 +42,13 @@ static hash_t  cache_hash_get (IN sDB *db, IN uint32_t offset)
   /* 0 - пустой элемент */
   ++offset;
   
-  hash_t h = cache_hash (offset, Cch->szHash_), he = h;
-  while ( /* (h < Cch->szHash_) && */ Cch->blHash_[h].offset )
+  hash_t h = cache_hash (offset) % Cch->szHash_, he = h;
+  while ( Cch->blHash_[h].offset )
   { 
     /* идём по открытой адресации до нахождения или 0 */
     if ( Cch->blHash_[h].offset == offset )
       return h;
-
-    // ++h;
     h = (h + 1U) % Cch->szHash_;
-
-    // if ( he == h ) break; // !!!
   }
   //-----------------------------------------------
   return Cch->szHash_;
@@ -64,37 +60,30 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
   /* 0 - пустой элемент */
   ++offset;
 
-  hash_t h = cache_hash (offset, Cch->szHash_), he = h;
-  while ( /* (h < Cch->szHash_) && */ Cch->blHash_[h].offset )
+  hash_t h = cache_hash (offset) % Cch->szHash_, he = h;
+  while ( Cch->blHash_[h].offset )
   {
     /* идём по открытой адресации до нахождения нуля */
-    hash_t hn = cache_hash (Cch->blHash_[h].offset, Cch->szHash_);
+    hash_t hn = cache_hash (Cch->blHash_[h].offset) % Cch->szHash_;
     /* проверяем, что все элементы в открытой адрерсации,
      * большие по хэшу данного находится ЗА ним.
      */
-    if ( hn > he )
+    if ( hn > he || (he - hn) > (Cch->szHash_ / 2) ) // второе условие - учитывает цикличность
     {
       /* если это не так, делаем 'ЗА' */
-      // he = h++;
       he = h; 
       h = (h + 1U) % Cch->szHash_;
       /* место куда нужно вставить */
 
       /* считаем все последующие */
-      while ( /* (h < Cch->szHash_) && */ Cch->blHash_[h].offset )
-      { 
-        // ++h;
-        h = (h + 1U) % Cch->szHash_;
-      }
+      while ( Cch->blHash_[h].offset )
+      { h = (h + 1U) % Cch->szHash_; }
       
-      // if ( h == Cch->szHash_ )
-      //   return h; // !!! ERROR INSERTING
-
       /* раздвигаем в этом месте */
       while ( h != he )
       {
         /* сдвигаем вверх все последующие */
-        SWAP (&Cch->blHash_[h - 1U], &Cch->blHash_[h]);
+        SWAP (&Cch->blHash_[(h) ? (h - 1U) : (Cch->szHash_ - 1U)], &Cch->blHash_[h]);
 
         //---LRU List---------------------------------
         if ( Cch->blHash_[h].next )
@@ -107,45 +96,37 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
         else
           Cch->LRUHead = &Cch->blHash_[h];
         //--------------------------------------------
-
-        // --h;
         h = (h) ? (h - 1U) : (Cch->szHash_ - 1U);
       }
       /* записываем исходный блок на освободившееся место */
       Cch->blHash_[he].offset = offset;
+
       return he;
     }
-    // ++h;
     h = (h + 1U) % Cch->szHash_;
   } // end while
 
-  // if ( h == Cch->szHash_ )
-  // {
-  //   return h; // !!! ERROR INSERTING
-  // }
   /* Записываем в первый чистый элемент */
   // else if ( !Cch->blHash_[h].offset )
   { Cch->blHash_[h].offset = offset; }
   //-----------------------------------------------
   return h;
 }
-static hash_t  cashe_hash_pop (IN sDB *db, IN hash_t hash)
+static hash_t  cashe_hash_pop (IN sDB *db, IN hash_t   hash  )
 {
   sCache *Cch = db->cache_;
   //-----------------------------------------------
   /* элемент, который нужно удалить */
   memset (&Cch->blHash_[hash], 0, sizeof (*Cch->blHash_));
 
-  // ++hash;
   hash = (hash + 1U) % Cch->szHash_;
   /* проверим следующий */
-  while ( /* (hash < Cch->szHash_) && */ Cch->blHash_[hash].offset )
+  while ( Cch->blHash_[hash].offset )
   {
     /* проверяем, если он находится в открытой адресации */
-    hash_t hn = cache_hash (Cch->blHash_[hash].offset, Cch->szHash_);
-    if ( hash > hn )
+    hash_t hn = cache_hash (Cch->blHash_[hash].offset) % Cch->szHash_;
+    if ( hash != hn ) // >
     {
-      // hash_t h = hash - 1U;
       hash_t h = (hash) ? (hash - 1U) : (Cch->szHash_ - 1U);
       /* сдвигаем вверх */
       Cch->blHash_[h] = Cch->blHash_[hash];
@@ -167,11 +148,10 @@ static hash_t  cashe_hash_pop (IN sDB *db, IN hash_t hash)
     }
     else break;
     /* проверяем, следующий */
-    // ++hash;
     hash = (hash + 1U) % Cch->szHash_;
   }
   //-----------------------------------------------
-  return (hash) ? (hash - 1U) : (Cch->szHash_ - 1U); // (hash - 1U);
+  return (hash) ? (hash - 1U) : (Cch->szHash_ - 1U);
 }
 //-------------------------------------------------------------------------------------------------------------
 bool  mydb_cache_init (IN sDB *db)
@@ -191,9 +171,9 @@ bool  mydb_cache_init (IN sDB *db)
     Cch-> sz_pg  = db->head_.page_size_;
     Cch->szHash_ = (uint_t) ((double) Cch->all_pgs * CACHE_HASH_COEF);
     //-----------------------------------------------
-    Cch->blocks_ = (sBlock*)   calloc (Cch->all_pgs,  sizeof (*Cch->blocks_));
-    Cch->blHash_ = (sCchHL*)   calloc (Cch->szHash_,  sizeof (*Cch->blHash_));
-    Cch->memory_ = (uchar_t*)  malloc (Cch->all_pgs * Cch->sz_pg * sizeof (uchar_t));
+    Cch->blocks_ = (sBlock*)  calloc (Cch->all_pgs,  sizeof (*Cch->blocks_));
+    Cch->blHash_ = (sCchHL*)  calloc (Cch->szHash_,  sizeof (*Cch->blHash_));
+    Cch->memory_ = (uchar_t*) malloc (Cch->all_pgs * Cch->sz_pg * sizeof (uchar_t));
 
     if ( !Cch->blocks_ || !Cch->memory_ || !Cch->blHash_ )
     {
@@ -226,7 +206,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
   hash_t h = cache_hash_get (db, offset);
   if ( h >= Cch->szHash_ )
   {
-    sBlock  *hl_block  = NULL;
+    sBlock  *hl_block = NULL;
     uchar_t *hl_memory = NULL;
     //-----------------------------------------------
     /* если в кэше нет данного блока */
@@ -237,12 +217,17 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
        *  Грязный блок должен быть записан
        *  на диск перед вытеснением из кэша.
        */
-      block_dump (Cch->LRULast->block); // check error?
+      if ( DONE != block_dump (Cch->LRULast->block) )
+      {
+        mydb_errno = MYDB_ERR_BWRITE;
+        fprintf (stderr, "cache push%s", strmyerror (mydb_errno));
+        exit (EXIT_FAILURE); // !!!
+      }
       // block_free (Cch->LRULast->block);
       //-----------------------------------------------
       /* сохраняем указатель на освободившийся блок */
       hl_block = Cch->LRULast->block;
-      
+
       /* вытесняем из кэша */
       h = (Cch->LRULast - Cch->blHash_);
       //---LRU List------------------------------------
@@ -256,7 +241,9 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
     /* кэш не заполнен - добавляем */
     h = cache_hash_set (db, offset);  // can be error
     if ( h == Cch->szHash_ )
-    { fprintf (stderr, "cache set%s\n", " error"); // strmyerror (MYDB_ERR_CCHSET));
+    {
+      mydb_errno = MYDB_ERR_CCHSET;
+      fprintf (stderr, "cache set%s\n", strmyerror (mydb_errno));
       exit (EXIT_FAILURE); // !!!
     }
     //-----------------------------------------------
@@ -290,7 +277,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
     {
       Cch->LRULast = hl;
       hl->next = NULL;
-    } 
+    }
     Cch->LRUHead = hl;
     //-----------------------------------------------
   }
@@ -300,6 +287,26 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
     /* если в кэше данный блок есть */
     hl = &Cch->blHash_[h];
     in_hash = true;
+
+    /* If a block is found, put it first in the LRU-list, then return */
+    //---LRU List------------------------------------
+    if ( Cch->LRUHead != &Cch->blHash_[h] )
+    {
+      if ( Cch->blHash_[h].next )
+        Cch->blHash_[h].next->prev = Cch->blHash_[h].prev;
+      else
+        Cch->LRULast = Cch->LRULast->prev;
+
+      if ( Cch->blHash_[h].prev )
+        Cch->blHash_[h].prev->next = Cch->blHash_[h].next;
+
+      Cch->blHash_[h].prev = NULL;
+      Cch->blHash_[h].next = Cch->LRUHead;
+
+      Cch->LRUHead->prev = &Cch->blHash_[h];
+      Cch->LRUHead = &Cch->blHash_[h];
+    }
+    //-----------------------------------------------
 
 #ifdef _DEBUG_CACHE
     printf ("exact\n");
@@ -311,14 +318,17 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
 
   //-----------------------------------------------
 #ifdef _DEBUG_CACHE
-  for ( uint_t i = 0U; i < Cch->szHash_; ++i )
-    printf ("%2d offset=%2d prev=%2d next=%2d\n", i, Cch->blHash_[i].offset,
-    Cch->blHash_[i].prev ? (Cch->blHash_[i].prev - Cch->blHash_) : -1,
-    Cch->blHash_[i].next ? (Cch->blHash_[i].next - Cch->blHash_) : -1);
-  printf ("last index: %2d\n", Cch->LRULast - Cch->blHash_);
-  printf ("head index: %2d\n", Cch->LRUHead - Cch->blHash_);
-  printf ("nmbr pages: %2d\n\n", Cch->n_pgs);
-#endif // _DEBUG
+  for ( uint_t j = 0U; j < Cch->szHash_; ++j )
+    if ( Cch->blHash_[j].offset )
+      for ( uint_t i = j - 3; i <= j + 3; ++i )
+        printf ("%3d offset=%5d prev=%3d next=%3d\n", i, Cch->blHash_[i].offset,
+                Cch->blHash_[i].prev ? (Cch->blHash_[i].prev - Cch->blHash_) : -1,
+                Cch->blHash_[i].next ? (Cch->blHash_[i].next - Cch->blHash_) : -1);
+  printf ("last index: %d\n", Cch->LRULast - Cch->blHash_);
+  printf ("head index: %d\n", Cch->LRUHead - Cch->blHash_);
+  printf ("nmbr pages: %d\n", Cch->n_pgs);
+  printf ("\n");
+#endif // _DEBUG_CACHE
   //-----------------------------------------------
   return in_hash;
 }
@@ -330,12 +340,17 @@ void  mydb_cache_sync (IN sDB *db)
                 hl != Cch->LRULast;
                 hl  = hl->next )
   {
-    block_dump (hl->block); // check error?
+    if ( DONE != block_dump (hl->block) )
+    {
+      mydb_errno = MYDB_ERR_BWRITE;
+      fprintf (stderr, "cache sync%s", strmyerror (mydb_errno));
+      exit (EXIT_FAILURE); // !!!
+    }
     // block_free (hl->block);
-    // hl->block = NULL;
+    hl->block = NULL;
   }
   //-----------------------------------------------
-  // block_free ()
+  // block_free () <--
   memset (Cch->blocks_, 0, Cch->all_pgs * sizeof (*Cch->blocks_));
   memset (Cch->blHash_, 0, Cch->all_pgs * sizeof (*Cch->blHash_));
   memset (Cch->memory_, 0, Cch->all_pgs * Cch->sz_pg);

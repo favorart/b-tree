@@ -50,7 +50,7 @@ struct Block
  /* (Block <--> Techb) interface */
  sDB      *owner_db_; /* pointer to owner date base - BTtree */
  uint32_t  offset_;   /* techb ipage, but for block doubles this->head->db_offset_ */
- bool       dirty_;   /* block non used --> reuse further like LSN */
+ bool       dirty_;   /* enum { dirty, clean } status; — страница изменена, не записана на диск */
  bool      is_mem_;
  //----------------------
  sDBHB      *head_;   /* pointer to interpret the begining of memory_ as aBlock header */
@@ -68,18 +68,18 @@ uint_t*   block_nkvs (IN sBlock *block);
 uint_t*   block_lptr (IN sBlock *block, IN const sDBT *key);
 uint_t*   block_rptr (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-sBlock*   block_create  (IN sDB    *db, IN uint_t offset);
-void      block_free    (IN sBlock *block);
+sBlock*   block_create (IN sDB    *db, IN uint_t offset);
+void      block_free   (IN sBlock *block);
 
 #ifdef MYDB_NOCACHE
-#define block_destroy block_free
-#else // MYDB_NOCACHE
+#define block_destroy  block_free
+#else  // !MYDB_NOCACHE
 #define block_destroy
-#endif
+#endif // !MYDB_NOCACHE
 //-------------------------------------------------------------------------------------------------------------
-eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDBT *value);
-eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDBT *value);
-eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key);
+eDBState  block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value);
+eDBState  block_select_deep (IN sBlock *block, IN const sDBT *key, OUT      sDBT *value);
+eDBState  block_delete_deep (IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *zchild);
 eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *lchild, IN  sBlock *rchild, IN const sDBT *key);

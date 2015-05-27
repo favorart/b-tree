@@ -6,12 +6,11 @@
 /* Returns -1 = (this < that); 0 = (this == that); 1 = (this > that)  */
 int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
 {
-  int res = (this_key->size < that_key->size) ? -1 :
-    (this_key->size > that_key->size) ? 1 : 0;
+  int res = memcmp (this_key->data, that_key->data, this_key->size);
 
   if ( !res )
-    res = memcmp (this_key->data, that_key->data, this_key->size);
-
+    res = (this_key->size < that_key->size) ? -1 :
+          (this_key->size > that_key->size) ?  1 : 0;
   return res;
 }
 //-------------------------------------------------------------------------------------------------------------

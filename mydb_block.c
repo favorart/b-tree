@@ -2,6 +2,7 @@
 #include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
+#include "mydb_cache.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /* DECORATIVE OPERATIONS */
@@ -43,7 +44,100 @@ bool      block_enough (IN const sBlock *block)
 //-------------------------------------------------------------------------------------------------------------
 /* HIGH-LEVEL OPERATIONS */
 
-eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDBT *value)
+eDBState  block_add_nonfull (IN sBlock *block, IN const sDBT *key, IN const sDBT *value)
+{
+  const char *error_prefix = "memory block add non-full";
+  eDBState  result = DONE;
+  sBlock   *ychild = NULL, *zchild = NULL;
+  //-----------------------------------------
+  if ( (*block_type (block)) == Leaf )
+  {
+    if ( DONE != block_insert (block, key, value, NULL, MYDB_INVALIDPTR) )
+    {
+      result = FAIL;
+      goto NONFULL_FREE;
+    }
+    if ( DONE != block_write (block) )
+    {
+      result = FAIL;
+      fprintf (stderr, "%s%s Offset is %d.\n", error_prefix,
+               strmyerror (MYDB_ERR_BWRITE), block->offset_);
+    }
+  }
+  else
+  {
+    //-----------------------------------------
+    /* Passing down through the tree */
+    sDBT iter = { 0 }, pre_k = { 0 };
+    sDBT   *k = block_key_next (block, &iter, NULL);
+    while ( k && key_compare (k, key) < 0 )
+    {
+      pre_k = *k;
+      k = block_key_next (block, k, NULL);
+    }
+    //-----------------------------------------
+#ifdef _DEBUG
+    if ( k )
+    {
+      char str[100];
+      memcpy (str, k->data, k->size);
+      str[k->size] = '\0';
+      printf ("anf='%s'\n", str);
+    }
+#endif // _DEBUG
+
+    if ( !(ychild = block_create (block->owner_db_, *block_lptr (block, k))) )
+    {
+      result = FAIL;
+      goto NONFULL_FREE;
+    }
+    //-----------------------------------------
+    /* Keep all block non-full through the path */
+    if ( block_isfull (ychild) )
+    {
+      if ( !(zchild = block_create (block->owner_db_, MYDB_OFFSET2NEW)) )
+      {
+        result = FAIL;
+        fprintf (stderr, "%s%s", error_prefix, strerror (errno));
+        goto NONFULL_FREE;
+      }
+      //-----------------------------------------
+      /* split the block, if there is a full one */
+      if ( DONE != block_split_child (block, ychild, zchild) )
+      {
+        result = FAIL;
+        goto NONFULL_FREE;
+      }
+
+      /* recently inserted key (that splits y and z) */
+      sDBT *k = block_key_next (block, &pre_k, NULL);
+      if ( k && key_compare (k, key) < 0 )
+      { SWAP (&ychild, &zchild); }
+    }
+    //-----------------------------------------
+    /* insert into non-full block */
+    if ( DONE != block_add_nonfull (ychild, key, value) )
+    {
+      result = FAIL;
+      goto NONFULL_FREE;
+    }
+    if ( DONE != block_write (ychild) )
+    {
+      result = FAIL;
+      fprintf (stderr, "%s%s Offset is %d.\n", error_prefix,
+               strmyerror (MYDB_ERR_BWRITE), zchild->offset_);
+      // goto NONFULL_FREE;
+    }
+  } // end else
+    //-----------------------------------------
+NONFULL_FREE:;
+  block_destroy (ychild);
+  block_destroy (zchild);
+  // ychild = NULL; zchild = NULL;
+  //-----------------------------------------
+  return result;
+}
+eDBState  block_select_deep (IN sBlock *block, IN const sDBT *key, OUT      sDBT *value)
 {
   const char *error_prefix = "memory block searching";
   eDBState    result = DONE;
@@ -74,6 +168,17 @@ eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDB
   }
   else if ( (*block_type (block)) == Leaf )
   {
+#define _DEBUG_SELECT
+#ifdef  _DEBUG_SELECT
+    if ( k )
+    {
+      char str[100];
+      memcpy (str, k->data, k->size);
+      str[k->size] = '\0';
+      printf ("select='%s'\n", str);
+    }
+#endif // _DEBUG
+
     result = FAIL;
     value->data = NULL;
     value->size = 0;
@@ -83,7 +188,7 @@ eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDB
     sBlock *child = block_create (block->owner_db_, *block_lptr (block, k));
     if ( child )
     {
-      result = block_select_data (child, key, value);
+      result = block_select_deep (child, key, value);
       block_destroy (child);
     }
     else result = FAIL;
@@ -91,97 +196,16 @@ eDBState  block_select_data (IN sBlock *block,  IN const sDBT *key, OUT      sDB
   //-----------------------------------------
   return result;
 }
-eDBState  block_add_nonfull (IN sBlock *block,  IN const sDBT *key, IN const sDBT *value)
-{
-  const char *error_prefix = "memory block add non-full";
-  eDBState  result = DONE;
-  sBlock   *ychild = NULL, *zchild = NULL;
-  //-----------------------------------------
-  if ( (*block_type (block)) == Leaf )
-  {
-    if ( DONE != block_insert (block, key, value, NULL, MYDB_INVALIDPTR) )
-    {
-      result = FAIL;
-      goto NONFULL_FREE;
-    }
-    if ( DONE != block_write  (block) )
-    {
-      result = FAIL;
-      fprintf (stderr, "%s%s Offset is %d.\n", error_prefix,
-               strmyerror (MYDB_ERR_BWRITE), block->offset_);
-    }
-  }
-  else
-  { 
-    //-----------------------------------------
-    /* Passing down through the tree */
-    sDBT iter = { 0 }, pre_k = { 0 };
-    sDBT   *k = block_key_next (block, &iter, NULL);
-    while ( k && key_compare (k, key) < 0 )
-    {
-      pre_k = *k;
-      k = block_key_next (block, k, NULL);
-    }
-    //-----------------------------------------
-    if ( !(ychild = block_create (block->owner_db_, *block_lptr (block, k))) )
-    {
-      result = FAIL;
-      goto NONFULL_FREE;
-    }
-    //-----------------------------------------
-    /* Keep all block non-full through the path */
-    if ( block_isfull (ychild) )
-    {
-      if ( !(zchild = block_create (block->owner_db_, MYDB_OFFSET2NEW)) )
-      { result = FAIL;
-        fprintf (stderr, "%s%s", error_prefix, strerror (errno));
-        goto NONFULL_FREE;
-      }
-      //-----------------------------------------
-      /* split the block, if there is a full one */
-      if ( DONE != block_split_child (block, ychild, zchild) )
-      {
-        result = FAIL;
-        goto NONFULL_FREE;
-      }
-
-      /* recently inserted key (that splits y and z) */
-      sDBT *k = block_key_next (block, &pre_k, NULL);
-      if (  k && key_compare (k, key) < 0 )
-      { SWAP (&ychild, &zchild); }
-    }
-    //-----------------------------------------
-    /* insert into non-full block */
-    if ( DONE != block_add_nonfull (ychild, key, value) )
-    {
-      result = FAIL;
-      goto NONFULL_FREE;
-    }
-    if ( DONE != block_write (ychild) )
-    {
-      result = FAIL;
-      fprintf (stderr, "%s%s Offset is %d.\n", error_prefix,
-               strmyerror (MYDB_ERR_BWRITE), zchild->offset_);
-      // goto NONFULL_FREE;
-    } 
-  } // end else
-  //-----------------------------------------
-NONFULL_FREE:;
-  block_destroy (ychild);
-  block_destroy (zchild);
-  // ychild = NULL; zchild = NULL;
-  //-----------------------------------------
-  return result;
-}
-eDBState  block_deep_delete (IN sBlock *block,  IN const sDBT *key)
+eDBState  block_delete_deep (IN sBlock *block, IN const sDBT *key)
 {
   const char *error_prefix = "memory block deep delete";
   eDBState    result = DONE;
   sDBT         value = { 0 };
   sBlock     *ychild = NULL, *zchild = NULL;
   //-----------------------------------------
+  sDBT iter = { 0 }, *k = &iter;
   /* if key is in current block */
-  if ( DONE == block_select_data (block, key, &value) ) // <-- malloc'ed
+  if ( DONE == block_select (block, key, &value, k) )
   {
     if ( (*block_type (block)) == Leaf )
     {
@@ -347,14 +371,13 @@ eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *
   ychild->free_             -= bytes_count;
   memset (ychild->free_, 0, bytes_count);
 
-  ychild->dirty_ = true;
-  zchild->dirty_ = true;
+  // ychild->dirty_ = true; zchild->dirty_ = true;
   //-----------------------------------------
   if ( DONE != block_write (ychild)
     || DONE != block_write (zchild)
     || DONE != block_write (parent) )
   { result = FAIL;
-    // goto end;
+    // goto SPLIT_FREE;
   }
   //-----------------------------------------*/
 SPLIT_FREE:;
@@ -391,24 +414,45 @@ eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *lchild, IN  sBlock *
   //-----------------------------------------
   lchild->free_             += need_size;
   lchild->head_->free_size_ -= need_size;
+  
   //-----------------------------------------
+  if ( DONE != block_write (lchild)
+    || DONE != block_write (rchild)
+    || DONE != block_write (parent) )
+  {
+    return FAIL;
+  }
+  //-----------------------------------------
+
   return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
 #define block_offset2free techb_get_index_of_first_free_bit
 //-------------------------------------------------------------------------------------------------------------
-sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
+sBlock*   block_create (IN sDB    *db, IN uint_t offset)
 {
   const char *error_prefix = "memory block creation";
   bool fail = false;
 
-  //-----------------------------------------
   sBlock *block = NULL;
-#ifdef MYDB_NOCACHE
-  block = calloc (1U, sizeof (sBlock));
-#else // MYDB_NOCACHE
+  //-----------------------------------------
+  uint_t block_offset;
+  if ( offset == MYDB_OFFSET2NEW )
+  {
+    block_offset = block_offset2free (db);
+    if ( block_offset >= db->head_.block_count_ )
+    {
+      fail = true;
+      mydb_errno = MYDB_ERR_NFREEB;
+      fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+      goto BLOCK_FREE;
+    }
+  }
+  else { block_offset = offset; }
+
+#ifndef MYDB_NOCACHE
   /* block_read перед тем как прочитать блок с диска, ищет блок в кэше */
-  bool in_cache = mydb_cache_push (db, offset, &block);
+  int in_cache = mydb_cache_push (db, block_offset, &block);
   /* returns the placed sBlock & memory */
   if ( !block || !block->memory_ )
   {
@@ -417,39 +461,30 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
     goto BLOCK_FREE;
   }
 
-  if ( in_cache )
-    goto BLOCK_FREE;
-#endif
+  if ( !in_cache )
+  {
+#elif MYDB_NOCACHE
+  block = calloc (1U, sizeof (sBlock));
   //-----------------------------------------
   if ( block )
   {
-    block->owner_db_ = db;
-    block->size_ = db->head_.page_size_;
-    block->is_mem_ = true;
-
-#ifdef MYDB_NOCACHE
-    block->memory_ = calloc (block->size_, sizeof (uchar_t));
+    block->memory_ = calloc (db->head_.page_size_, sizeof (uchar_t));
     if ( !block->memory_ )
     {
       fail = true;
       fprintf (stderr, "%s%s\n", error_prefix, strerror (errno));
       goto BLOCK_FREE;
-  }
+    }
 #endif // MYDB_NOCACHE
 
+    block->owner_db_ = db;
+    block->size_ = db->head_.page_size_;
+    block->is_mem_ = true;
     block->head_ = (sDBHB*) block->memory_;
+    block->offset_ = block->head_->db_offset_ = block_offset;
 
     if ( offset == MYDB_OFFSET2NEW )
     {
-      block->offset_ = block->head_->db_offset_ = block_offset2free (db);
-      if ( block->offset_ >= db->head_.block_count_ )
-      {
-        fail = true;
-        mydb_errno = MYDB_ERR_NFREEB;
-        fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
-        goto BLOCK_FREE;
-      }
-
       block->head_->free_size_ = block->size_ - sizeof (sDBHB);
       block->head_->kvs_count_ = 0U;
       block->head_->node_type_ = Free;
@@ -457,7 +492,6 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
     }
     else
     {
-      block->offset_ = block->head_->db_offset_ = offset;
       if ( DONE != block_read (block) )
       {
         fail = true;
@@ -465,13 +499,21 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
         fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
         goto BLOCK_FREE;
       }
+
+      if ( !block->head_->node_type_ )
+      {
+        fail = true;
+        mydb_errno = MYDB_ERR_CCHSET;
+        fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
+        exit (EXIT_FAILURE); // !!!
+      }
     }
 
-    block->data_   = (block->memory_ + sizeof (sDBHB));
-    block->free_   = (block->memory_ + (block->size_ - block->head_->free_size_));
-  }
+    block->data_ = (block->memory_ + sizeof (sDBHB));
+    block->free_ = (block->memory_ + (block->size_ - block->head_->free_size_));
 
 #ifdef MYDB_NOCACHE
+  }
   //-----------------------------------------
   else // calloc
   {
@@ -480,7 +522,9 @@ sBlock*   block_create  (IN sDB    *db, IN uint_t offset)
     fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
     // goto BLOCK_FREE;
   }
-#endif // MYDB_NOCACHE
+#else // !MYDB_NOCACHE
+  }
+#endif // !MYDB_NOCACHE
 
   //-----------------------------------------
 BLOCK_FREE:;
@@ -492,11 +536,13 @@ BLOCK_FREE:;
   //-----------------------------------------
   return block;
 }
-void      block_free    (IN sBlock *block)
+void      block_free   (IN sBlock *block)
 {
+#ifdef MYDB_NOCACHE
   //-----------------------------------------
   if ( block )
     free (block->memory_);
   free (block);
+#endif // MYDB_NOCACHE
 }
 //-------------------------------------------------------------------------------------------------------------
