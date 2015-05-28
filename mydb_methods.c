@@ -18,7 +18,6 @@ int  mydb_head_sync (IN sDB *db)
   return 0;
 }
 //-------------------------------------------------------------------------------------------------------------
-/* Open DB, if it exists, otherwise create DB */
 sDB* mydb_create (IN const char *file, IN const sDBC *conf)
 {
   const char *error_prefix = "mydb creation";
@@ -339,6 +338,7 @@ int  mydb_select (IN sDB *db, IN const sDBT *key, OUT      sDBT *data)
 { return block_select_deep (db->root_, key, data); }
 int  mydb_flush  (IN sDB *db)
 {
+  techb_sync (db);
   //-----------------------------------------
 #ifndef MYDB_NOCACHE
   /* cache: disk syncronization */

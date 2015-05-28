@@ -11,9 +11,9 @@ eDBState  block_dump (IN sBlock *block);
 
 #ifdef MYDB_NOCACHE 
 #define  block_write         block_dump
-#else // MYDB_NOCACHE
+#else  // !MYDB_NOCACHE
 #define  block_write(block)  ((block)->dirty_=true,DONE)
-#endif
+#endif // !MYDB_NOCACHE
 //-------------------------------------------------------------------------------------------------------------
 /* !!! non-malloc'ed output */
 eDBState  block_select (IN sBlock *block, IN const sDBT *key, OUT      sDBT *value, OUT    sDBT *bkey);
