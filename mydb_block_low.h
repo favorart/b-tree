@@ -23,7 +23,6 @@ eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr);
 //-------------------------------------------------------------------------------------------------------------
 sDBT*     block_key_next (IN sBlock *block, IN OUT   sDBT *key, OUT uint_t *vsz);
 sDBT      block_key_data (IN sBlock *block, IN const sDBT *key);
-
 #ifdef _DEBUG
 int       block_print_dbg (IN sBlock *block, IN const char *name);
 #endif // _DEBUG

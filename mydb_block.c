@@ -141,6 +141,10 @@ eDBState  block_select_deep (IN sBlock *block, IN const sDBT *key, OUT      sDBT
 {
   const char *error_prefix = "memory block searching";
   eDBState    result = DONE;
+
+#ifdef _DEBUG
+  block_print_dbg (block, "select");
+#endif // _DEBUG
   //-----------------------------------------
   sDBT iter = { 0 };
   sDBT   *k = block_key_next (block, &iter, NULL);
@@ -168,14 +172,17 @@ eDBState  block_select_deep (IN sBlock *block, IN const sDBT *key, OUT      sDBT
   }
   else if ( (*block_type (block)) == Leaf )
   {
-#define _DEBUG_SELECT
-#ifdef  _DEBUG_SELECT
+#ifdef  _DEBUG
     if ( k )
     {
       char str[100];
       memcpy (str, k->data, k->size);
       str[k->size] = '\0';
-      printf ("select='%s'\n", str);
+      printf ("select: '%s'=", str);
+
+      memcpy (str, key->data, key->size);
+      str[key->size] = '\0';
+      printf ("='%s'\n", str);
     }
 #endif // _DEBUG
 
@@ -382,7 +389,7 @@ eDBState  block_split_child (IN sBlock *parent, IN  sBlock *ychild, OUT sBlock *
   //-----------------------------------------*/
 SPLIT_FREE:;
 #ifdef _DEBUG
-  // block_print_dbg (parent, "parent");
+  block_print_dbg (parent, "parent");
   block_print_dbg (ychild, "ychild");
   block_print_dbg (zchild, "zchild");
 #endif
@@ -427,7 +434,7 @@ eDBState  block_merge_child (IN sBlock *parent, OUT sBlock *lchild, IN  sBlock *
   return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-#define block_offset2free techb_get_index_of_first_free_bit
+#define   block_offset2free  techb_get_index_of_first_free_bit
 //-------------------------------------------------------------------------------------------------------------
 sBlock*   block_create (IN sDB    *db, IN uint_t offset)
 {
@@ -502,11 +509,20 @@ sBlock*   block_create (IN sDB    *db, IN uint_t offset)
 
       if ( !block->head_->node_type_ )
       {
+        /* Critical instructions do not help */
+        // mydb_flush (db);
+        // mydb_cache_sync (db);
+        // mydb_cache_fine (db);
+        // block = block_create (db, offset);
+
+        mydb_cache_print_debug (db);
+
         fail = true;
         mydb_errno = MYDB_ERR_CCHSET;
         fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
         exit (EXIT_FAILURE); // !!!
       }
+
     }
 
     block->data_ = (block->memory_ + sizeof (sDBHB));

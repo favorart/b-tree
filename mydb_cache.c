@@ -10,31 +10,36 @@ struct Cache_CyclicHashTable_BuldInList
 {
   sBlock    *block; // ptr to a cell in the blocks array
   uint32_t  offset; // = 0 for an empty cell
+#ifdef _DEBUG_SELECT
+  hash_t      hash;
+#endif // _DEBUG_SELECT
   //----------------
   sCchHL     *next;
   sCchHL     *prev;
   //----------------
 };
 //-------------------------------------------------------------------------------------------------------------
-#define CACHE_HASH_COEF 1.5
+#define CACHE_HASH_COEF 11000
+#define  cache_hash(offset) (offset)
 
-static hash_t  cache_hash     (IN uint32_t offset)
-{
-  hash_t hash = 0U;
-  unsigned char* pc = (unsigned char*) &offset;
-
-  for ( int i = 0; i < sizeof (offset); ++i, ++pc )
-  {
-    hash += *pc;
-    hash += (hash << 10);
-    hash ^= (hash >> 6);
-  }
-  hash += (hash << 3);
-  hash ^= (hash >> 11);
-  hash += (hash << 15);
-
-  return hash;
-}
+// #define CACHE_HASH_COEF 1.5 
+// static hash_t  cache_hash     (IN uint32_t offset)
+// {
+//   hash_t hash = offset; // 0U;
+//   unsigned char* pc = (unsigned char*) &offset;
+// 
+//   for ( int i = 0; i < sizeof (offset); ++i, ++pc )
+//   {
+//     hash += *pc;
+//     hash += (hash << 10);
+//     hash ^= (hash >> 6);
+//   }
+//   hash += (hash << 3);
+//   hash ^= (hash >> 11);
+//   hash += (hash << 15);
+// 
+//   return hash;
+// }
 static hash_t  cache_hash_get (IN sDB *db, IN uint32_t offset)
 {
   sCache *Cch = db->cache_;
@@ -68,7 +73,7 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
     /* проверяем, что все элементы в открытой адрерсации,
      * большие по хэшу данного находится ЗА ним.
      */
-    if ( hn > he || (he - hn) > (Cch->szHash_ / 2) ) // второе условие - учитывает цикличность
+    if ( hn > he && (hn - he) < (Cch->szHash_ / 2) ) // второе условие - учитывает цикличность
     {
       /* если это не так, делаем 'ЗА' */
       he = h; 
@@ -101,6 +106,10 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
       /* записываем исходный блок на освободившееся место */
       Cch->blHash_[he].offset = offset;
 
+#ifdef _DEBUG_SELECT
+      Cch->blHash_[he].hash = he;
+#endif // _DEBUG_SELECT
+
       return he;
     }
     h = (h + 1U) % Cch->szHash_;
@@ -109,6 +118,10 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
   /* Записываем в первый чистый элемент */
   // else if ( !Cch->blHash_[h].offset )
   { Cch->blHash_[h].offset = offset; }
+
+#ifdef _DEBUG_SELECT
+  Cch->blHash_[h].hash = h;
+#endif // _DEBUG_SELECT
   //-----------------------------------------------
   return h;
 }
@@ -125,7 +138,7 @@ static hash_t  cashe_hash_pop (IN sDB *db, IN hash_t   hash  )
   {
     /* проверяем, если он находится в открытой адресации */
     hash_t hn = cache_hash (Cch->blHash_[hash].offset) % Cch->szHash_;
-    if ( hash != hn ) // >
+    if ( hash > hn && (hn - hash) < (Cch->szHash_ / 2) )
     {
       hash_t h = (hash) ? (hash - 1U) : (Cch->szHash_ - 1U);
       /* сдвигаем вверх */
@@ -212,6 +225,17 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
     /* если в кэше нет данного блока */
     if ( Cch->n_pgs == Cch->all_pgs )
     {
+      if ( Cch->LRULast->block == db->root_ )
+      {
+        Cch->LRULast->next = Cch->LRUHead;
+        Cch->LRUHead->prev = Cch->LRULast;
+
+        Cch->LRULast = Cch->LRULast->prev;
+        Cch->LRUHead = Cch->LRUHead->prev;
+
+        Cch->LRUHead->prev = NULL;
+        Cch->LRULast->next = NULL;
+      }
       //-----------------------------------------------
       /*  Кэш заполнен.
        *  Грязный блок должен быть записан
@@ -310,7 +334,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
 
 #ifdef _DEBUG_CACHE
     printf ("exact\n");
-#endif // _DEBUG
+#endif // _DEBUG_CACHE
   }
   //-----------------------------------------------
   (*block) = hl->block;
@@ -318,16 +342,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
 
   //-----------------------------------------------
 #ifdef _DEBUG_CACHE
-  for ( uint_t j = 0U; j < Cch->szHash_; ++j )
-    if ( Cch->blHash_[j].offset )
-      for ( uint_t i = j - 3; i <= j + 3; ++i )
-        printf ("%3d offset=%5d prev=%3d next=%3d\n", i, Cch->blHash_[i].offset,
-                Cch->blHash_[i].prev ? (Cch->blHash_[i].prev - Cch->blHash_) : -1,
-                Cch->blHash_[i].next ? (Cch->blHash_[i].next - Cch->blHash_) : -1);
-  printf ("last index: %d\n", Cch->LRULast - Cch->blHash_);
-  printf ("head index: %d\n", Cch->LRUHead - Cch->blHash_);
-  printf ("nmbr pages: %d\n", Cch->n_pgs);
-  printf ("\n");
+  void  mydb_cache_print_debug (IN sDB *db);
 #endif // _DEBUG_CACHE
   //-----------------------------------------------
   return in_hash;
@@ -346,19 +361,22 @@ void  mydb_cache_sync (IN sDB *db)
       fprintf (stderr, "cache sync%s", strmyerror (mydb_errno));
       exit (EXIT_FAILURE); // !!!
     }
-    // block_free (hl->block);
-    hl->block = NULL;
-  }
-  //-----------------------------------------------
+  }  
+}
+void  mydb_cache_fine (IN sDB *db)
+{
+  sCache *Cch = db->cache_;
+  //----------------------------------------------
   // block_free () <--
+  memset (Cch->blHash_, 0, Cch->szHash_ * sizeof (*Cch->blHash_));
   memset (Cch->blocks_, 0, Cch->all_pgs * sizeof (*Cch->blocks_));
-  memset (Cch->blHash_, 0, Cch->all_pgs * sizeof (*Cch->blHash_));
   memset (Cch->memory_, 0, Cch->all_pgs * Cch->sz_pg);
   //-----------------------------------------------
   Cch->LRUHead = Cch->blHash_;
   Cch->LRULast = Cch->blHash_;
   Cch->n_pgs = 0;
   //-----------------------------------------------
+  db->root_ = block_create (db, db->head_.offset2root_);
 }
 void  mydb_cache_free (IN sDB *db)
 {
@@ -372,4 +390,25 @@ void  mydb_cache_free (IN sDB *db)
   free (db->cache_);
   db->cache_ = NULL;
 }
+//-------------------------------------------------------------------------------------------------------------
+#ifdef _DEBUG_CACHE
+void mydb_cache_print_debug (IN sDB *db)
+{
+  sCache   *Cch = db->cache_;
+  
+  // for ( uint_t j = 0U; j < Cch->szHash_; ++j )
+  for ( uint_t i = 0U; i < Cch->szHash_; ++i )
+    if ( Cch->blHash_[i].offset && i != Cch->blHash_[i].hash )
+    // for ( uint_t i = j - 3; i <= j + 3; ++i )
+    printf ("%3d offset=%5d prev=%3d next=%3d hash=%d\n", i, Cch->blHash_[i].offset,
+            Cch->blHash_[i].prev ? (Cch->blHash_[i].prev - Cch->blHash_) : -1,
+            Cch->blHash_[i].next ? (Cch->blHash_[i].next - Cch->blHash_) : -1, Cch->blHash_[i].hash);
+  printf ("last index: %d\n", Cch->LRULast - Cch->blHash_);
+  printf ("head index: %d\n", Cch->LRUHead - Cch->blHash_);
+  printf ("nmbr pages: %d\n", Cch->n_pgs);
+  printf ("\n");
+
+  return;
+}
+#endif // _DEBUG_CACHE
 //-------------------------------------------------------------------------------------------------------------
