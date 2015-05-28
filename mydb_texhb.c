@@ -90,9 +90,9 @@ uint32_t   techb_get_index_of_first_free_bit (IN sDB *db)
           *byte |= (1U << ibit);
           ++db->head_.nodes_count_;
 
-#ifdef _DEBUG
+#ifdef _DEBUG_TECHB
           printf ("debug compose: page=%d byte=%d bit=%d\n", ipage, ibyte, ibit);
-#endif // _DEBUG
+#endif // _DEBUG_TECHBs
           compose (&db->techb_last0_, sz_techb, ipage, ibyte, ibit);
 
           db->techb_array_[ipage].dirty_ = true;

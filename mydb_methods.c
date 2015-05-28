@@ -296,6 +296,10 @@ int  mydb_insert (IN sDB *db, IN const sDBT *key, IN const sDBT *data)
 
   int  result = 0;
   sBlock *rb = db->root_;
+
+#ifdef _DEBUG
+  block_print_dbg (rb, "root");
+#endif // _DEBUG
   //-----------------------------------------
   if ( block_isfull (rb) )
   {
