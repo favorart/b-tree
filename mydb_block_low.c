@@ -61,7 +61,7 @@ sDBT      block_key_data  (IN sBlock *block, IN const sDBT *key)
 
   return value;
 }
-#ifdef  _DEBUG_SELECT
+#ifdef  _DEBUG
 int       block_print_dbg (IN sBlock *block, IN const char *name)
 {
   printf (">>> %s\n", name);
@@ -90,7 +90,7 @@ int       block_print_dbg (IN sBlock *block, IN const char *name)
   printf ("\n");
   return 0;
 }
-#endif
+#endif // _DEBUG
 //-------------------------------------------------------------------------------------------------------------
 /* LOW-LEVEL OPERATIONS */
 

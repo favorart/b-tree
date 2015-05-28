@@ -507,8 +507,10 @@ sBlock*   block_create (IN sDB    *db, IN uint_t offset)
         goto BLOCK_FREE;
       }
 
+#ifndef MYDB_NOCACHE
       if ( !block->head_->node_type_ )
       {
+#ifdef _DEBUG
         /* Critical instructions do not help */
         // mydb_flush (db);
         // mydb_cache_sync (db);
@@ -516,13 +518,14 @@ sBlock*   block_create (IN sDB    *db, IN uint_t offset)
         // block = block_create (db, offset);
 
         mydb_cache_print_debug (db);
+#endif // _DEBUG
 
         fail = true;
         mydb_errno = MYDB_ERR_CCHSET;
         fprintf (stderr, "%s%s\n", error_prefix, strmyerror (mydb_errno));
         exit (EXIT_FAILURE); // !!!
       }
-
+#endif // !MYDB_NOCACHE
     }
 
     block->data_ = (block->memory_ + sizeof (sDBHB));
