@@ -510,15 +510,9 @@ sBlock*   block_create (IN sDB    *db, IN uint_t offset)
 #ifndef MYDB_NOCACHE
       if ( !block->head_->node_type_ )
       {
-#ifdef _DEBUG
-        /* Critical instructions do not help */
-        // mydb_flush (db);
-        // mydb_cache_sync (db);
-        // mydb_cache_fine (db);
-        // block = block_create (db, offset);
-
+#ifdef _DEBUG_CACHE
         mydb_cache_print_debug (db);
-#endif // _DEBUG
+#endif // _DEBUG_CACHE
 
         fail = true;
         mydb_errno = MYDB_ERR_CCHSET;
