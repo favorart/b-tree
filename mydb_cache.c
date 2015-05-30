@@ -2,7 +2,6 @@
 #include "mydb_block.h"
 #include "mydb_cache.h"
 
-
 /* Перед изменением блока, запись попадает в журнал */
 //-------------------------------------------------------------------------------------------------------------
 struct Cache_CyclicHashTable_BuldInList
@@ -73,8 +72,7 @@ static hash_t  cache_hash_set (IN sDB *db, IN uint32_t offset)
      */
 
     if ( ((hn > he) && (hn - he) < (Cch->szHash_ / 2)) 
-      || ((hn < he) && (he - hn) > (Cch->szHash_ / 2)) )
-      // (hn == 0U && he == (Cch->szHash_ - 1U)) ) // 2е условие - учитывает цикличность
+      || ((hn < he) && (he - hn) > (Cch->szHash_ / 2)) ) // 2е условие - учитывает цикличность
     {
       /* если это не так, делаем 'ЗА' */
       he = h;
@@ -336,7 +334,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
 
   //-----------------------------------------------
 #ifdef _DEBUG_CACHE
-  void  mydb_cache_print_debug (IN sDB *db);
+  mydb_cache_print_debug (db);
 #endif // _DEBUG_CACHE
   //-----------------------------------------------
   return in_hash;
