@@ -11,7 +11,7 @@ a.out:  ${objects}
 	$(cc) $? -O0 -ggdb -std=c99 -o $@
 
 lib: ${lib_objects}
-	ar cru $? -o libmydb.a
+	ar rcs libmydb.a $?
 
 clean:
 	rm -f ${objects} a.out
