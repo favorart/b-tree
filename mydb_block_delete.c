@@ -7,9 +7,9 @@
 typedef struct childs_list sChList;
 struct childs_list
 {
-  struct Block       *parent;
-  struct Block       *lchild;
-  struct Block       *rchild;
+  struct Block  *parent;
+  struct Block  *lchild;
+  struct Block  *rchild;
   //------------------------
   struct childs_list *next;
 };

@@ -30,6 +30,9 @@
 #endif
 //-------------------------------------------------------------------------------------------------------------
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -37,8 +40,6 @@
 #include <string.h>
 #include <memory.h>
 #include <stdio.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <time.h>
 //-------------------------------------------------------------------------------------------------------------
 #define IN
@@ -46,8 +47,7 @@
 //-------------------------------------------------------------------------------------------------------------
 typedef int              HFILE;
 typedef unsigned char  uchar_t;
-typedef uint32_t        uint_t;
-typedef uint64_t       ulong_t;
+typedef unsigned int    uint_t;
 //-------------------------------------------------------------------------------------------------------------
 #define SWAP(X,Y) \
     do { unsigned char _buf[sizeof (*(X))]; \
