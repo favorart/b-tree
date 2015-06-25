@@ -2,9 +2,9 @@
 #include "mydb_block.h"
 #include "mydb_cache.h"
 
-/* Перед изменением блока, запись попадает в журнал */
 //-------------------------------------------------------------------------------------------------------------
-struct Cache_CyclicHashTable_BuldInList
+/* Перед изменением блока, запись попадает в журнал */
+struct Cache_CyclicHashTable_BuildInList
 {
   sBlock    *block; // ptr to a cell in the blocks array
   uint32_t  offset; // = 0 for an empty cell
@@ -36,7 +36,8 @@ static hash_t  cache_hash     (IN uint32_t offset)
 
   return hash;
 }
-#endif 
+#endif
+
 static hash_t  cache_hash_get (IN sDB *db, IN uint32_t offset)
 {
   sCache *Cch = db->cache_;

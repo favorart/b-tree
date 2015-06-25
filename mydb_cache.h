@@ -7,7 +7,7 @@
 #define _MYDB_CACHE_H_
 //-------------------------------------------------------------------------------------------------------------
 typedef uint32_t hash_t;
-typedef struct Cache_CyclicHashTable_BuldInList sCchHL;
+typedef struct Cache_CyclicHashTable_BuildInList sCchHL;
 /* LRU cache с поддержкой write-back позволяет 
  * отложенно записывать изменения на диск.
  */

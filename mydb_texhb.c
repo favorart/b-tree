@@ -3,17 +3,11 @@
 #include "mydb_block.h"
 #include "mydb_techb.h"
 
-
 //-------------------------------------------------------------------------------------------------------------
 void      compose (OUT uint32_t *offset, IN  uint32_t sz_page, IN  uint_t  ipage, IN  uint_t  ibyte, IN  uint_t  ibit)
-{
-  *offset = ibit + (ibyte + ipage * sz_page) * MYDB_BITSINBYTE;
-}
+{ *offset = ibit + (ibyte + ipage * sz_page) * MYDB_BITSINBYTE; }
 void    decompose (IN  uint32_t  offset, IN  uint32_t sz_page, OUT uint_t *ipage, OUT uint_t *ibyte, OUT uint_t *ibit)
-{
-  /* offset = ibit + (ibyte + ipage * sz_page) * BITSINBYTE */
-
-  *ibit  = (offset % MYDB_BITSINBYTE);
+{ *ibit  = (offset % MYDB_BITSINBYTE);
   *ibyte = (offset / MYDB_BITSINBYTE % sz_page);
   *ipage = (offset / MYDB_BITSINBYTE / sz_page);
 }
@@ -145,8 +139,8 @@ sTechB*    techb_create  (IN sDB     *db,
                           IN uint_t   offset)
 {
   const char *error_prefix = "technical block creation";
-  bool     fail  = false;
-  sTechB  *techb = NULL;
+  bool    fail  = false;
+  sTechB *techb = NULL;
   //-----------------------------------------
   if ( offset >= db->head_.techb_count_ )
   {
