@@ -4,28 +4,28 @@
 #ifndef _MYDB_LOG_LOW_H_
 #define _MYDB_LOG_LOW_H_
 //-------------------------------------------------------------------------------------------------------------
-/* Журнал (Write Ahead Log) содержит историю изменения блоков базы данных */
-typedef struct Logging sLog;
+/* Журнал (Write Ahead Log) содержит историю операций над базой данных */
 struct Logging
 {
-  const char  *filename;
+  char        *filename;
   HFILE        fd;
   //------------------
-  uint64_t    lsn;
-  uint_t      n_recover;
+  uint64_t     lsn;
 };
 /*   Каждая запись в журнале содержит № записи (LSN) — монотонно увеличивающийся
- *   счётчик записи, тип операции (insert / replace / delete), пару ключ-значение
- *   либо только ключ (для delete).
- *   Также в журнале необходимо иметь специальные записи для событий: checkpoint,
- *   открытия и закрытия базы данных. Формат этих записей определяется отдельно.
+ *   счётчик записи, тип операции (insert / delete / checkpoint), пару ключ-значение
+ *   либо только ключ (для delete). Все числа little-endian (как в памяти x86).
  *
- *      +------+-------+-----+-----+-----+-----+----------+
- *      | type |  LSN  | ksz | vsz | key | val | LogRecSz | values
- *      +------+-------+-----+-----+-----+-----+----------+
- *      | char | int64 |int32|int32| ksz | vsz | uint32_t | sizes
- *      +------+-------+-----+-----+-----+-----+----------+
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *      | type | ksz | vsz |  LSN  | key | val | checksum | values
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *      |  u32 | u32 | u32 |  u64  | ksz | vsz |   u32    | sizes
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *
+ *   checksum is FNV-1a of all the previous bytes of the record:
+ *   a torn record at the tail (crash during write) is detected and ignored.
  */
+#define  MYDB_LOG_HEAD_SIZE  20U
 //-------------------------------------------------------------------------------------------------------------
 typedef struct LogRecord sLogRec;
 struct LogRecord
@@ -34,21 +34,14 @@ struct LogRecord
   uint64_t        lsn;
   //------------------
   sDBT       key, val;
-  //------------------
-  uint32_t       size;
+  void           *buf;  // malloc'ed storage of key and val (on read)
 };
 //-------------------------------------------------------------------------------------------------------------
-/* Записать в журнал log record. */
+/* Записать в журнал log record. true on error */
 bool      mydb_log_write (IN sLog *log, IN sLogRec *record);
-/* Поместить позицию чтения на последний чекпоинт журнала */
-bool      mydb_log_seek (IN sLog *log);
 //-------------------------------------------------------------------------------------------------------------
-/* Прочитать текущую запись из журнала и сместить позицию чтения */
+/* Прочитать текущую запись из журнала и сместить позицию чтения. NULL at the end or at a torn record */
 sLogRec*  mydb_log_record_next (IN sLog    *log);
 void      mydb_log_record_free (IN sLogRec *record);
-//-------------------------------------------------------------------------------------------------------------
-#ifdef _DEBUG_LOG
-void  mydb_log_print (IN sLog *log, sLogRec *record);
-#endif // _DEBUG_LOG
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_LOG_LOW_H_

@@ -4,8 +4,18 @@
 #define _MYDB_H_
 
 // #define _DEBUG
-// #define  MYDB_NOCACHE  1
 #define  MYDB_BITSINBYTE  8U
+//-------------------------------------------------------------------------------------------------------------
+/* Defaults, used when a field of sDBC is zero */
+#define  MYDB_DEFAULT_DB_SIZE     (512U * 1024U * 1024U)
+#define  MYDB_DEFAULT_PAGE_SIZE   (4U * 1024U)
+#define  MYDB_DEFAULT_CACHE_SIZE  (16U * 1024U * 1024U)
+/* Limits */
+#define  MYDB_MIN_PAGE_SIZE       512U
+#define  MYDB_MIN_CACHE_PAGES     128U
+/* "MYDB" and the on-disk format version */
+#define  MYDB_MAGIC               0x4244594DU
+#define  MYDB_VERSION             2U
 //-------------------------------------------------------------------------------------------------------------
 typedef enum  db_state eDBState;
 enum  db_state // : uchar_t
@@ -39,14 +49,13 @@ struct DBC
 typedef struct DBFileHeader sDBFH;
 struct DBFileHeader
 {
-  // Page        common;   /* общий */
-  // PageSize    padding;  /* заполнение */
-  //--------------------------------------
+  uint32_t        magic_;  /* MYDB_MAGIC */
+  uint32_t      version_;  /* MYDB_VERSION */
   uint32_t      db_size_;  /* const */ 
   uint32_t    page_size_;  /* const */
   uint32_t   cache_size_;  /* const */
   uint32_t  block_count_;  /* const */
-  uint32_t  techb_count_;  /* const */
+  uint32_t  techb_count_;  /* const: number of bitmap pages */
   uint32_t  nodes_count_;  /* меняем в block_index_free */
   uint32_t  offset2root_;  /* меняем при присвоении типа Root */
 };
@@ -78,12 +87,13 @@ struct DB
   */
   //---------------------------------------------
   /* Private API */
-  HFILE    hfile_;
+  HFILE    hfile_;     /* -1 when not opened */
   sDBFH     head_;
   sBlock   *root_;
 
   sCache   *cache_;
   sLog     *log_;
+  bool      replaying_; /* recovery in progress: do not journal */
   //---------------------------------------------
   sTechB   *techb_array_;
   uint_t    techb_last0_;
@@ -97,10 +107,14 @@ sDB* dbopen   (const char *file);
 
 int  db_close  (sDB *);
 int  db_delete (sDB *, void *, size_t);
-int  db_select (sDB *, void *, size_t, void **, size_t *);;
+int  db_select (sDB *, void *, size_t, void **, size_t *);
 int  db_insert (sDB *, void *, size_t, void *, size_t);
 /* Syncronize the cached blocks with data on a disk */
 int  db_flush  (sDB *);
+/* Check the B-tree invariants (sorted keys, equal leaf depth): number of keys or -1 */
+long   db_check (sDB *);
+/* Maximum size of a key and a value together for the given page size */
+size_t db_max_kv_size (const sDB *);
 //-------------------------------------------------------------------------------------------------------------
 int  key_compare (IN const sDBT *k, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------

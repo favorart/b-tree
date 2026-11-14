@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "mydb_block.h"
 #include "mydb_cache.h"
+#include "mydb_low.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /* Перед изменением блока, запись попадает в журнал */
@@ -24,7 +25,7 @@ static hash_t  cache_hash     (IN uint32_t offset)
   hash_t hash = 0U;
   unsigned char* pc = (unsigned char*) &offset;
 
-  for ( int i = 0; i < sizeof (offset); ++i, ++pc )
+  for ( size_t i = 0; i < sizeof (offset); ++i, ++pc )
   {
     hash += *pc;
     hash += (hash << 10);
@@ -45,7 +46,7 @@ static hash_t  cache_hash_get (IN sDB *db, IN uint32_t offset)
   /* 0 - пустой элемент */
   ++offset;
   
-  hash_t h = cache_hash (offset) % Cch->szHash_, he = h;
+  hash_t h = cache_hash (offset) % Cch->szHash_;
   while ( Cch->blHash_[h].offset )
   { 
     /* идём по открытой адресации до нахождения или 0 */
@@ -174,6 +175,8 @@ bool  mydb_cache_init (IN sDB *db)
     Cch->m_size_ = db->head_.cache_size_;
     Cch->  n_pgs = 0;
     Cch->all_pgs = db->head_.cache_size_ / db->head_.page_size_;
+    if ( Cch->all_pgs < MYDB_MIN_CACHE_PAGES )
+      Cch->all_pgs = MYDB_MIN_CACHE_PAGES;
     Cch-> sz_pg  = db->head_.page_size_;
     Cch->szHash_ = (uint_t) ((double) Cch->all_pgs * CACHE_HASH_COEF);
     //-----------------------------------------------
@@ -183,7 +186,7 @@ bool  mydb_cache_init (IN sDB *db)
 
     if ( !Cch->blocks_ || !Cch->memory_ || !Cch->blHash_ )
     {
-      fprintf (stderr, "chache init%s", strerror (errno));
+      fprintf (stderr, "cache init: %s\n", strerror (errno));
       was_fail = true;
       mydb_cache_free (db);
     }
@@ -196,7 +199,7 @@ bool  mydb_cache_init (IN sDB *db)
   }
   else
   {
-    fprintf (stderr, "chache init%s", strerror (errno));
+    fprintf (stderr, "cache init: %s\n", strerror (errno));
     was_fail = true;
   }
   //-----------------------------------------------
@@ -233,14 +236,18 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
       /*  Кэш заполнен.
        *  Грязный блок должен быть записан
        *  на диск перед вытеснением из кэша.
+       *  Writing a single page would leave on disk a mix of old and new
+       *  pages, that the journal cannot repair. So all dirty pages, the
+       *  bitmap and the header are written together: the disk always holds
+       *  a consistent tree, and replaying the journal from the last
+       *  checkpoint over it gives the right result (operations are idempotent).
        */
-      if ( DONE != block_dump (Cch->LRULast->block) )
+      if ( Cch->LRULast->block->dirty_ && mydb_sync_pages (db) )
       {
         mydb_errno = MYDB_ERR_BWRITE;
-        fprintf (stderr, "cache push%s", strmyerror (mydb_errno));
+        fprintf (stderr, "cache push%s\n", strmyerror (mydb_errno));
         exit (EXIT_FAILURE); // !!!
       }
-      // block_free (Cch->LRULast->block);
       //-----------------------------------------------
       /* сохраняем указатель на освободившийся блок */
       hl_block = Cch->LRULast->block;
@@ -279,7 +286,7 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
     //-----------------------------------------------
     // block_free () <--
     memset (hl->block, 0, sizeof (*hl->block));
-    memset (hl_memory, 0, sizeof (Cch->sz_pg));
+    memset (hl_memory, 0, Cch->sz_pg);
     hl->block->memory_ = hl_memory;
 
     //---LRU List------------------------------------
@@ -340,36 +347,21 @@ bool  mydb_cache_push (IN sDB *db, IN uint32_t offset, OUT sBlock **block)
   //-----------------------------------------------
   return in_hash;
 }
-void  mydb_cache_sync (IN sDB *db)
+bool  mydb_cache_sync (IN sDB *db)
 {
   sCache *Cch = db->cache_;
   //-----------------------------------------------
-  for ( sCchHL *hl = Cch->LRUHead;
-                hl != Cch->LRULast;
-                hl  = hl->next )
+  /* every used cell of the blocks array is a cached page (the LRU tail too) */
+  for ( uint_t i = 0U; i < Cch->n_pgs; ++i )
   {
-    if ( DONE != block_dump (hl->block) )
+    if ( DONE != block_dump (&Cch->blocks_[i]) )
     {
       mydb_errno = MYDB_ERR_BWRITE;
-      fprintf (stderr, "cache sync%s", strmyerror (mydb_errno));
-      exit (EXIT_FAILURE); // !!!
+      fprintf (stderr, "cache sync%s\n", strmyerror (mydb_errno));
+      return true;
     }
-  }  
-}
-void  mydb_cache_fine (IN sDB *db)
-{
-  sCache *Cch = db->cache_;
-  //----------------------------------------------
-  // block_free () <--
-  memset (Cch->blHash_, 0, Cch->szHash_ * sizeof (*Cch->blHash_));
-  memset (Cch->blocks_, 0, Cch->all_pgs * sizeof (*Cch->blocks_));
-  memset (Cch->memory_, 0, Cch->all_pgs * Cch->sz_pg);
-  //-----------------------------------------------
-  Cch->LRUHead = Cch->blHash_;
-  Cch->LRULast = Cch->blHash_;
-  Cch->n_pgs = 0;
-  //-----------------------------------------------
-  db->root_ = block_create (db, db->head_.offset2root_);
+  }
+  return false;
 }
 void  mydb_cache_free (IN sDB *db)
 {

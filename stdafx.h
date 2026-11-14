@@ -1,10 +1,11 @@
 #ifndef _STDAFX_H_
 #define _STDAFX_H_
 //-------------------------------------------------------------------------------------------------------------
-#ifdef __linux__ 
-/* linux code goes here */
-#define __USE_MISC      1
+#if defined(__unix__) || defined(__APPLE__)
+/* POSIX code goes here */
+#ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE   700
+#endif
 
 #include <unistd.h>
 
@@ -41,13 +42,20 @@
 #include <memory.h>
 #include <stdio.h>
 #include <time.h>
+#include <sys/types.h>
 //-------------------------------------------------------------------------------------------------------------
 #define IN
 #define OUT
 //-------------------------------------------------------------------------------------------------------------
 typedef int              HFILE;
 typedef unsigned char  uchar_t;
-typedef unsigned int    uint_t;
+typedef uint32_t        uint_t;
+//-------------------------------------------------------------------------------------------------------------
+/* Unaligned-safe access to the 32-bit fields packed inside a page */
+static inline uint32_t  mydb_rd32 (const void *p)
+{ uint32_t v; memcpy (&v, p, sizeof (v)); return v; }
+static inline void      mydb_wr32 (void *p, uint32_t v)
+{ memcpy (p, &v, sizeof (v)); }
 //-------------------------------------------------------------------------------------------------------------
 #define SWAP(X,Y) \
     do { unsigned char _buf[sizeof (*(X))]; \

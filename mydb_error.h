@@ -8,10 +8,11 @@ enum mydb_error
 {
   MYDB_ERR_NONE,   MYDB_ERR_FPARAM, MYDB_ERR_FNEXST,
   MYDB_ERR_BWRITE, MYDB_ERR_OFFSET, MYDB_ERR_NFREEB,
-  MYDB_ERR_NFREES, MYDB_ERR_CCHSET /* , ... */
+  MYDB_ERR_NFREES, MYDB_ERR_CCHSET, MYDB_ERR_KVSIZE,
+  MYDB_ERR_FORMAT, MYDB_ERR_LOGWRT /* , ... */
 };
 
-e_mydb_err mydb_errno;
+extern e_mydb_err mydb_errno;
 const char*  strmyerror (e_mydb_err err);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_ERROR_H_

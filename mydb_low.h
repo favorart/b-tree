@@ -15,6 +15,8 @@ int  mydb_insert (IN sDB *db, IN const sDBT *key, IN  const sDBT *data);
 int  mydb_select (IN sDB *db, IN const sDBT *key, OUT       sDBT *data);
 int  mydb_flush  (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
-int  mydb_head_sync (IN sDB *db);
+int  mydb_head_sync  (IN sDB *db);
+/* Write all dirty pages, the bitmap and the header, then fsync: 1 on error */
+int  mydb_sync_pages (IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_LOW_H_

@@ -1,17 +1,19 @@
 #include "stdafx.h"
 #include "mydb_low.h"
 #include "mydb.h"
+#include "mydb_block.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /* Returns -1 = (this < that); 0 = (this == that); 1 = (this > that)  */
 int  key_compare (IN const sDBT *this_key, IN const sDBT *that_key)
 {
-  int res = memcmp (this_key->data, that_key->data, this_key->size);
+  size_t min_size = (this_key->size < that_key->size) ? this_key->size : that_key->size;
+  int res = memcmp (this_key->data, that_key->data, min_size);
 
-  if ( !res )
-    res = (this_key->size < that_key->size) ? -1 :
-          (this_key->size > that_key->size) ?  1 : 0;
-  return res;
+  if ( res )
+    return (res < 0) ? -1 : 1;
+  return (this_key->size < that_key->size) ? -1 :
+         (this_key->size > that_key->size) ?  1 : 0;
 }
 //-------------------------------------------------------------------------------------------------------------
 sDB* dbcreate  (const char *file, IN const sDBC *conf)
@@ -34,6 +36,7 @@ int  db_select (sDB *db, void *key, size_t key_len, void **val, size_t *val_len)
   struct DBT valt = { NULL, 0 };
 
   int rc = db->select (db, &keyt, &valt);
+  if ( rc ) { valt.data = NULL; valt.size = 0; }
 
   *val = valt.data;
   *val_len = valt.size;
@@ -50,4 +53,7 @@ int  db_insert (sDB *db, void *key, size_t key_len, void  *val, size_t  val_len)
 //-------------------------------------------------------------------------------------------------------------
 int  db_flush  (sDB *db)
 { return mydb_flush (db); }
+//-------------------------------------------------------------------------------------------------------------
+long db_check  (sDB *db)
+{ return block_check_tree (db); }
 //-------------------------------------------------------------------------------------------------------------

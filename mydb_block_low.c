@@ -2,6 +2,12 @@
 #include "mydb_block_low.h"
 
 //-------------------------------------------------------------------------------------------------------------
+/*  Entry layout inside a block (all numbers are uint32, unaligned):
+ *     | ksz | vsz | key | val | rptr |
+ *  key->data points to the key bytes, so ksz/vsz are right before it.
+ */
+#define  VSZ_OF(kdata)  mydb_rd32 ((uchar_t*) (kdata) - 1U * sizeof (uint32_t))
+//-------------------------------------------------------------------------------------------------------------
 /*  function of iteration through the Block by keys
  *  to init the iteration - give a pointer to a key sDBT with zero size
  *  to stop the iteration - function returns NULL
@@ -9,40 +15,30 @@
 sDBT*     block_key_next  (IN sBlock *block, IN OUT   sDBT *key, OUT uint_t *vsz)
 {
   if ( !key || (key->size && ((uchar_t*) key->data < block->data_ || (uchar_t*) key->data >= block->free_)) )
-  { fprintf (stderr, "memory block key next%s", strmyerror (MYDB_ERR_FPARAM));
+  { fprintf (stderr, "memory block key next%s\n", strmyerror (MYDB_ERR_FPARAM));
     return NULL;
   }
-  
-  if ( *block_nkvs (block) <= 0 )
+
+  if ( *block_nkvs (block) == 0U )
     return NULL;
 
+  uchar_t *entry;
   if ( !key->size ) /* get first key */
-  {
-    uint_t* ksz = (uint_t*) block->data_;
-    if ( vsz ) *vsz = *(ksz + 1U);
+    entry = block->data_;
+  else /* get next key: skip key, value and the right pointer */
+    entry = (uchar_t*) key->data + key->size + VSZ_OF (key->data) + sizeof (uint32_t);
 
-    key->data = (void*) (ksz + 2U);
-    key->size = *ksz;
+  if ( entry >= block->free_ ) /* got all keys */
+  {
+    key->size = 0;
+    key->data = NULL;
+    if ( vsz ) *vsz = 0U;
+    return NULL;
   }
-  else /* get next key */
-  {
-    uint_t  val_size = *((uint_t*) key->data - 1U);
-    uint_t  key_size = key->size;
 
-    key->size = *((uchar_t*) key->data + key->size + val_size + sizeof (uint_t));
-    key->data =  ((uchar_t*) key->data +  key_size + val_size + sizeof (uint_t) * 3U);
-
-    if ( key->data >= (void*) block->free_ ) /* got all keys */
-    {
-      key->size = 0;
-      key->data = NULL;
-      if ( vsz ) *vsz = 0U;
-
-      return NULL;
-    }
-
-    if ( vsz ) *vsz = *((uint_t*) key->data - 1U);
-  } // end else
+  key->size = mydb_rd32 (entry);
+  key->data = entry + 2U * sizeof (uint32_t);
+  if ( vsz ) *vsz = VSZ_OF (key->data);
 
   return key;
 }
@@ -52,11 +48,11 @@ sDBT      block_key_data  (IN sBlock *block, IN const sDBT *key)
   sDBT value = { 0 };
 
   if ( !key || (uchar_t*) key->data < block->data_ || (uchar_t*) key->data >= block->free_ )
-  { fprintf (stderr, "memory block key data%s", strmyerror (MYDB_ERR_FPARAM));
+  { fprintf (stderr, "memory block key data%s\n", strmyerror (MYDB_ERR_FPARAM));
     return value;
   }
 
-  value.size = *((uint_t*) (key->data) - 1U);
+  value.size = VSZ_OF (key->data);
   value.data = ((uchar_t*) (key->data) + key->size);
 
   return value;
@@ -64,29 +60,20 @@ sDBT      block_key_data  (IN sBlock *block, IN const sDBT *key)
 #ifdef  _DEBUG
 int       block_print_dbg (IN sBlock *block, IN const char *name)
 {
+  sDBHB *h = block->head_;
   printf (">>> %s\n", name);
-  printf ("type: %s\n", !((int*) block->memory_)[0] ? "Free" :
-          ((int*) block->memory_)[0] == 1 ? "Pass" : "Leaf");
-  printf ("nkvs: %d\t", ((int*) block->memory_)[1]);
-  printf ("fset: %d\n", ((int*) block->memory_)[2]);
-  printf ("free: %d\t", ((int*) block->memory_)[3]);
-  printf ("pt_l: %d\n", ((int*) block->memory_)[4]);
+  printf ("type: %s\t", (h->node_type_ == Free) ? "Free" :
+                        (h->node_type_ == Pass) ? "Pass" : "Leaf");
+  printf ("nkvs: %u\t", (unsigned) h->kvs_count_);
+  printf ("offs: %u\t", (unsigned) h->db_offset_);
+  printf ("free: %u\t", (unsigned) h->free_size_);
+  printf ("ptr0: %d\n", (int) h->pointer_0_);
 
-  uint_t *imem = ((int*) block->memory_ + 5);
-  for ( uint_t i = 0U; i < *block_nkvs (block); ++i )
-  {
-    uint_t ksz = *(imem);
-    uint_t vsz = *(++imem); imem++;
-    int    ptr =  *(int*) ((uchar_t*) imem + ksz + vsz);
-
-    char str[100];
-    memcpy (str, imem, ksz);
-    str[ksz] = '\0';
-
-    printf ("ksz=%d vsz=%d k='%s' v ptr=%d\n", ksz, vsz, str, ptr);
-    imem = (uint_t*) ((uchar_t*) imem + ksz + vsz);
-    imem++;
-  }
+  uint_t vsz = 0U;
+  sDBT iter = { 0 };
+  for ( sDBT *k = block_key_next (block, &iter, &vsz); k; k = block_key_next (block, k, &vsz) )
+    printf ("ksz=%u vsz=%u k='%.*s' rptr=%d\n", (unsigned) k->size, (unsigned) vsz,
+            (int) k->size, (const char*) k->data, (int) block_rptr (block, k));
   printf ("\n");
   return 0;
 }
@@ -97,9 +84,10 @@ int       block_print_dbg (IN sBlock *block, IN const char *name)
 eDBState  block_seek (IN sBlock *block)
 {
   //-----------------------------------------
-  long  offset = sizeof (sDBFH) + block->offset_ * block->size_;
+  /* | file header | bitmap pages (techb_count_) | data pages (block_count_) | */
+  off_t  offset = (off_t) sizeof (sDBFH) + (off_t) block->offset_ * block->size_;
   if ( block->is_mem_ )
-    offset += block->owner_db_->head_.techb_count_ * block->size_;
+    offset += (off_t) block->owner_db_->head_.techb_count_ * block->size_;
   //-----------------------------------------
   /* lseek returns the offset, in bytes, of the new position from the beginning of the file */
   return (lseek (block->owner_db_->hfile_, offset, SEEK_SET) == offset) ? DONE : FAIL;
@@ -110,7 +98,7 @@ eDBState  block_read (IN sBlock *block)
   if ( DONE != block_seek (block) )
     return FAIL;
 
-  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
+  if ( read (block->owner_db_->hfile_, block->memory_, block->size_) != (ssize_t) block->size_ )
     return FAIL;
   //-----------------------------------------
   block->dirty_ = false;
@@ -118,99 +106,73 @@ eDBState  block_read (IN sBlock *block)
 }
 eDBState  block_dump (IN sBlock *block)
 {
-#ifndef MYDB_NOCACHE
   if ( !block->dirty_ )
   { return DONE; }
+  //-----------------------------------------
+  if ( DONE != block_seek (block) )
+    return FAIL;
 
+  if ( write (block->owner_db_->hfile_, block->memory_, block->size_) != (ssize_t) block->size_ )
+    return FAIL;
   //-----------------------------------------
   /*  Грязный блок должен быть записан
    *  на диск перед вытеснением из кэша.
    */
   block->dirty_ = false;
-#endif // !MYDB_NOCACHE
-  //-----------------------------------------
-  if ( DONE != block_seek (block) )
-    return FAIL;
-
-  if ( write (block->owner_db_->hfile_, block->memory_, block->size_) != block->size_ )
-    return FAIL;
-  //-----------------------------------------
   return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
-/* returns k, equal to or last smaller the key (non-malloc'ed output) */
-eDBState  block_select (IN sBlock *block, IN const sDBT *key, OUT      sDBT *value,    OUT sDBT *bkey)
-{
-  //---------------------------------------
-  if ( *block_nkvs (block) )
-  {
-    sDBT iter = { 0 }, pre_k = {0};
-    sDBT   *k = block_key_next (block, &iter, NULL);
-    while ( k && key_compare (k, key) < 0 )
-    {
-      pre_k = *k;
-      k = block_key_next (block, k, NULL);
-    }
-    //---------------------------------------
-    if ( k || (k = &pre_k) )
-    {
-      *bkey = *k;
-      *value = block_key_data (block, k);
-      return DONE;
-    }
-  }
-  //---------------------------------------
-  memset (bkey, 0, sizeof (*bkey));
-  return FAIL;
-}
-/* change the bkey from given block to key and its value */
+/*  Replace the entry bkey (a key living in this block) by key:value in place.
+ *  The right pointer of the entry is kept, unless Rptr != MYDB_INVALIDPTR.
+ *  On success bkey points to the new key.
+ */
 eDBState  block_change (IN sBlock *block, IN const sDBT *key, IN const sDBT *value, IN OUT sDBT *bkey, IN uint_t Rptr)
 {
   if ( (uchar_t*) bkey->data < block->data_ || (uchar_t*) bkey->data >= block->free_ )
-  { fprintf (stderr, "memory block change key%s", strmyerror (MYDB_ERR_FPARAM));
+  { fprintf (stderr, "memory block change key%s\n", strmyerror (MYDB_ERR_FPARAM));
     return FAIL;
   }
   //-----------------------------------------
   sDBT val = block_key_data (block, bkey);
-  int  shifting = ((value->size - val.size) + (key->size - bkey->size));
+  long shifting = ((long) value->size - (long) val.size) + ((long) key->size - (long) bkey->size);
+  if ( shifting > 0 && (uint32_t) shifting > block->head_->free_size_ )
+  { fprintf (stderr, "memory block change key%s\n", strmyerror (MYDB_ERR_NFREES));
+    return FAIL;
+  }
 
-  /* ptr to next key-value */
+  /* ptr to the right pointer of the entry, the rest of the block follows it */
   uchar_t *lay_mem = ((uchar_t*) bkey->data + bkey->size + val.size);
   /* move right (+) or left (-) */
   memmove (lay_mem + shifting, lay_mem, block->free_ - lay_mem);
 
-  *((uint_t*) bkey->data - 1U) = value->size;
-  *((uint_t*) bkey->data - 2U) =   key->size;
+  mydb_wr32 ((uchar_t*) bkey->data - 1U * sizeof (uint32_t), (uint32_t) value->size);
+  mydb_wr32 ((uchar_t*) bkey->data - 2U * sizeof (uint32_t), (uint32_t)   key->size);
 
   bkey->size = key->size;
-  memcpy (bkey->data,  key->data,  bkey->size);
-  memcpy (((uchar_t*) bkey->data + bkey->size), value->data, value->size);
+  memmove (bkey->data, key->data, bkey->size);
+  memmove (((uchar_t*) bkey->data + bkey->size), value->data, value->size);
   //-----------------------------------------
   block->free_             += shifting;
-  block->head_->free_size_ -= shifting;
+  block->head_->free_size_ -= (uint32_t) shifting;
+  if ( shifting < 0 )
+    memset (block->free_, 0, (size_t) -shifting);
   //-----------------------------------------
   /* Rptr for key */
-  lay_mem = (lay_mem + key->size + value->size);
   if ( Rptr != MYDB_INVALIDPTR )
-  { *((uint_t*) lay_mem) = Rptr; }
-  else
-  { *((uint_t*) lay_mem) = MYDB_INVALIDPTR; }
+  { mydb_wr32 ((uchar_t*) bkey->data + key->size + value->size, Rptr); }
   //-----------------------------------------
-
 #ifdef _DEBUG
   block_print_dbg (block, "change");
 #endif
-
-  // block->dirty_ = true;
   return DONE;
 }
 eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *value,    OUT sDBT *bkey, IN uint_t Rptr)
 {
   //-----------------------------------------
-  uint_t need_free_size = (3U * sizeof (uint_t) + value->size + key->size);
+  uint_t need_free_size = (uint_t) (MYDB_ENTRY_OVERHEAD + value->size + key->size);
   if ( need_free_size > block->head_->free_size_ )
   {
-    fprintf (stderr, "memory block insert key%s", strmyerror (MYDB_ERR_NFREES));
+    fprintf (stderr, "memory block insert key%s\n", strmyerror (MYDB_ERR_NFREES));
     return FAIL;
   }
   //-----------------------------------------
@@ -219,59 +181,20 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
   while ( k && key_compare (k, key) < 0 )
   { k = block_key_next (block, k, NULL); }
   //-----------------------------------------
-  uchar_t *lay_mem = NULL;
   if ( k && !key_compare (k, key) )
   {
-#ifdef  _DEBUG
-    char str[100];
-
-    memset (str, 0, 100);
-    memcpy (str, key->data, key->size);
-    printf ("'%s'=", str);
-
-    memset (str, 0, 100);
-    memcpy (str, k->data, k->size);
-    printf ("'%s'\n", str);
-#endif // _DEBUG
-
-    /* if there is the equal key */
-    sDBT val = block_key_data (block, k);
-
-    /* RPtr for k */
-    lay_mem = ((uchar_t*) k->data + k->size + val.size);
-
-    if ( val.size != value->size )
-    {
-      int  shifting = (value->size - val.size);
-      //-----------------------------------------
-      /* move right (+) or left (-) */
-      memmove (lay_mem + shifting, lay_mem, block->free_ - lay_mem);
-
-      *((uint_t*) k->data - 1U) = val.size = value->size;
-      //-----------------------------------------
-      block->free_ += shifting;
-      block->head_->free_size_ -= shifting;
-      //-----------------------------------------
-      /* RPtr for k */
-      lay_mem = ((uchar_t*) k->data + k->size + val.size);
-    }
-    memcpy (val.data, value->data, value->size);
-
-    /* key is exactly the same */
+    /* if there is the equal key - replace its value */
+    if ( DONE != block_change (block, key, value, k, Rptr) )
+      return FAIL;
     if ( bkey ) { *bkey = *k; }
-
-    /* Rptr for k */
-    if ( Rptr != MYDB_INVALIDPTR )
-    { *((uint_t*) lay_mem) = Rptr; }
-    else
-    { *((uint_t*) lay_mem) = MYDB_INVALIDPTR; }
-  } 
+  }
   else
   {
+    uchar_t *lay_mem = NULL;
     if ( k )
     {
       /* size for k */
-      lay_mem = ((uchar_t*) k->data - sizeof (uint_t) * 2U);
+      lay_mem = ((uchar_t*) k->data - sizeof (uint32_t) * 2U);
       /* move apart (раздвинуть) */
       memmove (lay_mem + need_free_size, lay_mem, block->free_ - lay_mem);
     }
@@ -281,8 +204,8 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
       lay_mem = block->free_;
     }
     //-----------------------------------------
-    *(uint_t*) lay_mem =   key->size; lay_mem += sizeof (uint_t);
-    *(uint_t*) lay_mem = value->size; lay_mem += sizeof (uint_t);
+    mydb_wr32 (lay_mem, (uint32_t)   key->size); lay_mem += sizeof (uint32_t);
+    mydb_wr32 (lay_mem, (uint32_t) value->size); lay_mem += sizeof (uint32_t);
     //-----------------------------------------
     memmove (lay_mem,               key->data,   key->size);
     memmove (lay_mem + key->size, value->data, value->size);
@@ -295,11 +218,7 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
     }
 
     /* Rptr for key */
-    lay_mem = (lay_mem + key->size + value->size);
-    if ( Rptr != MYDB_INVALIDPTR )
-    { *((uint_t*) lay_mem) = Rptr; }
-    else
-    { *((uint_t*) lay_mem) = MYDB_INVALIDPTR; }
+    mydb_wr32 (lay_mem + key->size + value->size, Rptr);
     //-----------------------------------------
     block->free_ += need_free_size;
     block->head_->free_size_ -= need_free_size;
@@ -310,11 +229,11 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
 #ifdef _DEBUG
   block_print_dbg (block, "insert");
 #endif
-
-  //-----------------------------------------
-  // block->dirty_ = true;
   return DONE;
 }
+/*  Remove the entry with the given key together with its
+ *  left (lptr == true) or right (lptr == false) child pointer.
+ */
 eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
 {
   uint_t vsz = 0;
@@ -327,9 +246,9 @@ eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
   if ( k && !key_compare (key, k) )
   {
     /* also delete the LPtr/Rptr for k */
-    uchar_t *lay_mem = ((uchar_t*) k->data - sizeof (uint_t) * ((lptr) ? 3U : 2U));
-    uint_t  size_mem = (k->size + vsz + sizeof (uint_t) * 3U);
-    
+    uchar_t *lay_mem = ((uchar_t*) k->data - sizeof (uint32_t) * ((lptr) ? 3U : 2U));
+    uint_t  size_mem = (uint_t) (k->size + vsz + MYDB_ENTRY_OVERHEAD);
+
     lay_mem += size_mem;
     /* move together (сдвинуть) */
     memmove (lay_mem - size_mem, lay_mem, block->free_ - lay_mem);
@@ -338,12 +257,11 @@ eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
 
     block->free_             -= size_mem;
     block->head_->free_size_ += size_mem;
+    --(*(block_nkvs (block)));
     //-----------------------------------------
 #ifdef _DEBUG
     block_print_dbg (block, "delete");
 #endif
-
-    // block->dirty_ = true;
     return DONE;
   }
   //-----------------------------------------
