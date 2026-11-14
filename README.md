@@ -83,6 +83,7 @@ Configuration (`sDBC`), a zero field takes the default:
 | [`src/`](src) | the implementation and the internal headers |
 | [`examples/demo.c`](examples/demo.c) | a small example of the API |
 | [`tests/`](tests) | unit tests of the modules and integration tests against a model |
+| [`bench/`](bench) | throughput benchmark |
 | `build/` | build output (not in git) |
 
 ## Architecture
@@ -229,6 +230,22 @@ and verifies the tree invariants with `db_check`:
   the parent reopens it and compares with the model, also with a torn journal tail.
 
 `MYDB_CRASH_ROUNDS=20 make test` runs more crash rounds.
+
+## Performance
+
+`make bench` (source: [`bench/bench_mydb.c`](bench/bench_mydb.c)) measures the throughput with 16-byte keys
+and 32-byte values. 50 000 keys, gcc 11 `-O2`, WSL2 on a desktop CPU, one run:
+
+| configuration | insert, sequential | insert, random | select, present | select, absent | update | delete, random |
+|---|---:|---:|---:|---:|---:|---:|
+| page 4K, cache 16M (the tree fits) | 319K ops/s | 186K | 594K | 634K | 302K | 405K |
+| page 4K, cache 1M (does not fit) | 221K | 22K | 328K | 189K | 13K | 13K |
+| page 16K, cache 16M | 158K | 228K | 275K | 230K | 236K | 250K |
+
+A checkpoint (`db_flush`) takes 25–40 ms, mostly `fsync`.
+When the cache is smaller than the tree, random modifications are about 10 times slower:
+evicting a dirty page writes *all* dirty pages and calls `fsync` (see [Journal and recovery](#journal-and-recovery)) —
+the price of the simple crash-consistency scheme. CI runs the benchmark on every push and shows the table in the job summary.
 
 ## Limitations
 
