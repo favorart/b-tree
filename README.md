@@ -27,10 +27,10 @@ the bugs found by review and sanitizers are fixed, and the unfinished parts
 ## Quick start
 
 ```bash
-make            # libmydb.a and the demo
-./mydb_demo     # creates demo.db and demo.db.log
-make test       # tests
-make SAN=1 test # tests with AddressSanitizer + UndefinedBehaviorSanitizer
+make                # build/libmydb.a and build/mydb_demo
+./build/mydb_demo   # creates demo.db and demo.db.log
+make test           # unit and integration tests
+make SAN=1 test     # the same with AddressSanitizer + UndefinedBehaviorSanitizer
 ```
 
 A POSIX system and a C99 compiler (CI runs gcc and clang on Ubuntu).
@@ -39,7 +39,7 @@ Run `make clean` before switching between `SAN=1` and a regular build.
 ## API
 
 ```c
-#include "mydb.h"
+#include "mydb.h"   /* include/, link with build/libmydb.a */
 
 sDBC conf = { .db_size = 64 << 20, .page_size = 4096, .cache_size = 4 << 20 }; /* 0 = default */
 sDB *db = dbcreate ("data.db", &conf);    /* or dbopen ("data.db") for an existing one */
@@ -57,7 +57,7 @@ db_close  (db);                            /* flush + free */
 
 The same operations are available as function pointers of `struct DB`
 (`db->insert`, `db->select`, `db->delete`, `db->sync`, `db->close`) with `struct DBT { void *data; size_t size; }` arguments,
-as required by the course API ([`mydb.h`](mydb.h)).
+as required by the course API ([`include/mydb.h`](include/mydb.h), documented with doxygen comments).
 
 | Function | Returns |
 |---|---|
@@ -75,16 +75,26 @@ Configuration (`sDBC`), a zero field takes the default:
 | `page_size` | 4 KB | at least 512 bytes |
 | `cache_size` | 16 MB | at least 128 pages |
 
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| [`include/`](include) | the public API: `mydb.h` (and `stdafx.h` with the common includes) |
+| [`src/`](src) | the implementation and the internal headers |
+| [`examples/demo.c`](examples/demo.c) | a small example of the API |
+| [`tests/`](tests) | unit tests of the modules and integration tests against a model |
+| `build/` | build output (not in git) |
+
 ## Architecture
 
 ```mermaid
 flowchart TD
-    API["mydb.c: db_insert / db_select / db_delete"] --> M["mydb_methods.c: create, open, close, flush"]
-    M --> LOG["mydb_log.c: write-ahead journal, recovery"]
-    M --> BT["mydb_block.c, mydb_block_delete.c: B-tree algorithms"]
-    BT --> LOW["mydb_block_low.c: entries inside a page"]
-    BT --> C["mydb_cache.c: LRU page cache"]
-    BT --> TB["mydb_techb.c: free-page bitmap"]
+    API["src/mydb.c: db_insert / db_select / db_delete"] --> M["src/mydb_methods.c: create, open, close, flush"]
+    M --> LOG["src/mydb_log.c: write-ahead journal, recovery"]
+    M --> BT["src/mydb_block.c, src/mydb_block_delete.c: B-tree algorithms"]
+    BT --> LOW["src/mydb_block_low.c: entries inside a page"]
+    BT --> C["src/mydb_cache.c: LRU page cache"]
+    BT --> TB["src/mydb_techb.c: free-page bitmap"]
     C --> F[("data.db")]
     TB --> F
     LOG --> J[("data.db.log")]

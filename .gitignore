@@ -1,10 +1,10 @@
-# build
-*.o
-*.a
-/mydb_demo
-/tests/test_mydb
-/tests/test_units
+# build output: library, demo, tests, their database files
+/build/
 
-# databases and journals made by the demo and the tests
+# databases and journals made by the demo
 *.db
 *.db.log
+
+# build output of old layouts
+*.o
+*.a

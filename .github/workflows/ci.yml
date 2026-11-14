@@ -27,7 +27,7 @@ jobs:
       run: make CC=${{ matrix.cc }} SAN=${{ matrix.san }} CFLAGS="-O2 -g -Werror"
 
     - name: demo
-      run: ./mydb_demo /tmp/demo.db
+      run: ./build/mydb_demo /tmp/demo.db
 
     - name: tests
       env:
