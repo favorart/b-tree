@@ -57,6 +57,7 @@ static hash_t cache_hash_get(IN sDB *db, IN uint32_t offset)
     //-----------------------------------------------
     return Cch->szHash_;
 }
+/* linear probing: put into the first empty cell after the home one */
 static hash_t cache_hash_set(IN sDB *db, IN uint32_t offset)
 {
     sCache *Cch = db->cache_;
@@ -64,106 +65,54 @@ static hash_t cache_hash_set(IN sDB *db, IN uint32_t offset)
     /* 0 marks an empty cell, so offsets are stored + 1 */
     ++offset;
 
-    hash_t h = cache_hash(offset) % Cch->szHash_, he = h;
-    while (Cch->blHash_[h].offset)
+    hash_t h = cache_hash(offset) % Cch->szHash_;
+    for (uint_t probes = 0U; Cch->blHash_[h].offset; ++probes)
     {
-        /* linear probing until an empty cell */
-        hash_t hn = cache_hash(Cch->blHash_[h].offset) % Cch->szHash_;
-        /* keep the probe sequence ordered: the elements with
-     * a bigger home hash must stay AFTER the new one.
-     */
-
-        if (((hn > he) && (hn - he) < (Cch->szHash_ / 2)) ||
-            ((hn < he) && (he - hn) > (Cch->szHash_ / 2))) // the 2nd condition handles the wrap-around
-        {
-            /* otherwise insert the new element before it */
-            he = h;
-            h = (h + 1U) % Cch->szHash_;
-            /* the place to insert */
-
-            /* find the end of the probe sequence */
-            while (Cch->blHash_[h].offset)
-            {
-                h = (h + 1U) % Cch->szHash_;
-            }
-
-            /* make room at this place */
-            while (h != he)
-            {
-                /* shift the following elements up */
-                SWAP(&Cch->blHash_[(h) ? (h - 1U) : (Cch->szHash_ - 1U)], &Cch->blHash_[h]);
-
-                //---LRU List---------------------------------
-                if (Cch->blHash_[h].next)
-                    Cch->blHash_[h].next->prev = &Cch->blHash_[h];
-                else
-                    Cch->LRULast = &Cch->blHash_[h];
-
-                if (Cch->blHash_[h].prev)
-                    Cch->blHash_[h].prev->next = &Cch->blHash_[h];
-                else
-                    Cch->LRUHead = &Cch->blHash_[h];
-                //--------------------------------------------
-                h = (h) ? (h - 1U) : (Cch->szHash_ - 1U);
-            }
-            /* put the new element into the freed cell */
-            Cch->blHash_[he].offset = offset;
-
-            return he;
-        }
+        if (probes == Cch->szHash_)
+            return Cch->szHash_; /* no empty cell */
         h = (h + 1U) % Cch->szHash_;
-    } // end while
-
-    /* put into the first empty cell */
-    // else if ( !Cch->blHash_[h].offset )
-    {
-        Cch->blHash_[h].offset = offset;
     }
-    //-----------------------------------------------
+    Cch->blHash_[h].offset = offset;
     return h;
 }
-static hash_t cashe_hash_pop(IN sDB *db, IN hash_t hash)
+/* move the cell (with its place in the LRU list) */
+static void cache_cell_move(IN sCache *Cch, IN hash_t to, IN hash_t from)
+{
+    sCchHL *dst = &Cch->blHash_[to];
+    *dst = Cch->blHash_[from];
+    memset(&Cch->blHash_[from], 0, sizeof(*dst));
+
+    if (dst->next)
+        dst->next->prev = dst;
+    else
+        Cch->LRULast = dst;
+
+    if (dst->prev)
+        dst->prev->next = dst;
+    else
+        Cch->LRUHead = dst;
+}
+/*  Delete the cell (already unlinked from the LRU list) with the backward shift
+ *  (Knuth, Algorithm R): the following cells of the probe sequence, whose home
+ *  is not between the hole and themselves, are moved into the hole.
+ */
+static void cache_hash_pop(IN sDB *db, IN hash_t hole)
 {
     sCache *Cch = db->cache_;
     //-----------------------------------------------
-    hash_t he = hash;
-    /* the element to delete */
-    memset(&Cch->blHash_[hash], 0, sizeof(*Cch->blHash_));
+    memset(&Cch->blHash_[hole], 0, sizeof(*Cch->blHash_));
 
-    hash = (hash + 1U) % Cch->szHash_;
-    /* check the next one */
-    while (Cch->blHash_[hash].offset)
+    for (hash_t j = (hole + 1U) % Cch->szHash_; Cch->blHash_[j].offset; j = (j + 1U) % Cch->szHash_)
     {
-        /* is it displaced from its home cell? */
-        hash_t hn = cache_hash(Cch->blHash_[hash].offset) % Cch->szHash_;
-        if (hash > hn || (hash != hn && hn >= he)) // the second condition handles the wrap-around
-        {
-            hash_t h = (hash) ? (hash - 1U) : (Cch->szHash_ - 1U);
-            /* shift it up */
-            Cch->blHash_[h] = Cch->blHash_[hash];
+        hash_t home = cache_hash(Cch->blHash_[j].offset) % Cch->szHash_;
+        /* is the home cyclically in (hole, j]? then the cell stays reachable */
+        bool stays = (hole <= j) ? (hole < home && home <= j) : (hole < home || home <= j);
+        if (stays)
+            continue;
 
-            /*---LRU List---------------------------------*/
-            if (Cch->blHash_[h].next)
-                Cch->blHash_[h].next->prev = &Cch->blHash_[h];
-            else
-                Cch->LRULast = &Cch->blHash_[h];
-
-            if (Cch->blHash_[h].prev)
-                Cch->blHash_[h].prev->next = &Cch->blHash_[h];
-            else
-                Cch->LRUHead = &Cch->blHash_[h];
-            /*--------------------------------------------*/
-
-            /* the element to delete */
-            memset(&Cch->blHash_[hash], 0, sizeof(*Cch->blHash_));
-        }
-        else
-            break;
-        /* check the next one */
-        hash = (hash + 1U) % Cch->szHash_;
+        cache_cell_move(Cch, hole, j);
+        hole = j;
     }
-    //-----------------------------------------------
-    return (hash) ? (hash - 1U) : (Cch->szHash_ - 1U);
 }
 //-------------------------------------------------------------------------------------------------------------
 bool mydb_cache_init(IN sDB *db)
@@ -262,7 +211,7 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
             Cch->LRULast = Cch->LRULast->prev;
             Cch->LRULast->next = NULL;
             //-----------------------------------------------
-            cashe_hash_pop(db, h);
+            cache_hash_pop(db, h);
             //-----------------------------------------------
         }
         //-----------------------------------------------
@@ -295,7 +244,9 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
 
         //---LRU List------------------------------------
         hl->prev = NULL;
-        if (Cch->LRUHead->offset)
+        /* LRUHead points to a cell of a cached page unless the cache was empty
+         * (testing LRUHead->offset fails when the first page lands in cell 0) */
+        if (Cch->LRUHead != hl && Cch->LRUHead->offset)
         {
             /* the cache is not empty */
             hl->next = Cch->LRUHead;
