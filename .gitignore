@@ -3,6 +3,7 @@
 *.a
 /mydb_demo
 /tests/test_mydb
+/tests/test_units
 
 # databases and journals made by the demo and the tests
 *.db

@@ -1,7 +1,7 @@
 # mydb: B-tree key-value storage
 #
 #   make            - static library libmydb.a and the demo
-#   make test       - build and run the tests
+#   make test       - build and run the unit and the integration tests
 #   make SAN=1 test - the same with AddressSanitizer + UndefinedBehaviorSanitizer
 #   make format     - clang-format the sources
 #   make clean
@@ -36,8 +36,11 @@ mydb_demo: mydb_main.o libmydb.a
 tests/test_mydb: tests/test_mydb.o libmydb.a
 	$(CC) $(LDFLAGS) -o $@ $^
 
-test: tests/test_mydb
-	cd tests && ./test_mydb
+tests/test_units: tests/test_units.o libmydb.a
+	$(CC) $(LDFLAGS) -o $@ $^
+
+test: tests/test_units tests/test_mydb
+	cd tests && ./test_units && ./test_mydb
 
 %.o: %.c $(wildcard *.h)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -46,5 +49,5 @@ format:
 	clang-format -i *.c *.h tests/*.c
 
 clean:
-	rm -f *.o tests/*.o libmydb.a mydb_demo tests/test_mydb
+	rm -f *.o tests/*.o libmydb.a mydb_demo tests/test_mydb tests/test_units
 	rm -f *.db *.db.log tests/*.db tests/*.db.log
