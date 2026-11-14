@@ -123,8 +123,8 @@ eDBState  block_dump (IN sBlock *block)
   { return DONE; }
 
   //-----------------------------------------
-  /*  Ãðÿçíûé áëîê äîëæåí áûòü çàïèñàí
-   *  íà äèñê ïåðåä âûòåñíåíèåì èç êýøà.
+  /*  Ð“Ñ€ÑÐ·Ð½Ñ‹Ð¹ Ð±Ð»Ð¾Ðº Ð´Ð¾Ð»Ð¶ÐµÐ½ Ð±Ñ‹Ñ‚ÑŒ Ð·Ð°Ð¿Ð¸ÑÐ°Ð½
+   *  Ð½Ð° Ð´Ð¸ÑÐº Ð¿ÐµÑ€ÐµÐ´ Ð²Ñ‹Ñ‚ÐµÑÐ½ÐµÐ½Ð¸ÐµÐ¼ Ð¸Ð· ÐºÑÑˆÐ°.
    */
   block->dirty_ = false;
 #endif // !MYDB_NOCACHE
@@ -272,7 +272,7 @@ eDBState  block_insert (IN sBlock *block, IN const sDBT *key, IN const sDBT *val
     {
       /* size for k */
       lay_mem = ((uchar_t*) k->data - sizeof (uint_t) * 2U);
-      /* move apart (ðàçäâèíóòü) */
+      /* move apart (Ñ€Ð°Ð·Ð´Ð²Ð¸Ð½ÑƒÑ‚ÑŒ) */
       memmove (lay_mem + need_free_size, lay_mem, block->free_ - lay_mem);
     }
     else
@@ -331,7 +331,7 @@ eDBState  block_delete (IN sBlock *block, IN const sDBT *key, IN bool lptr)
     uint_t  size_mem = (k->size + vsz + sizeof (uint_t) * 3U);
     
     lay_mem += size_mem;
-    /* move together (ñäâèíóòü) */
+    /* move together (ÑÐ´Ð²Ð¸Ð½ÑƒÑ‚ÑŒ) */
     memmove (lay_mem - size_mem, lay_mem, block->free_ - lay_mem);
 
     memset (block->free_ - size_mem, 0, size_mem);

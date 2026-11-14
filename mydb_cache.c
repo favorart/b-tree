@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include "mydb_block.h"
 #include "mydb_cache.h"
 
