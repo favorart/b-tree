@@ -4,26 +4,26 @@
 #if defined(__unix__) || defined(__APPLE__)
 /* POSIX code goes here */
 #ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE   700
+#define _XOPEN_SOURCE 700
 #endif
 
 #include <unistd.h>
 
-#define S_IREAD         S_IRUSR
-#define S_IWRITE        S_IWUSR
-#define S_IEXEC         S_IXUSR
- /* Under UNIX there is no difference
+#define S_IREAD  S_IRUSR
+#define S_IWRITE S_IWUSR
+#define S_IEXEC  S_IXUSR
+/* Under UNIX there is no difference
   * between text and binary files.
   */
-#define O_BINARY        0
+#define O_BINARY 0
 #elif _WIN32
-#pragma warning (disable : 4996) // safe-windows functions
-#pragma warning (disable : 4047) // pointer to function in a return
+#pragma warning(disable : 4996) // safe-windows functions
+#pragma warning(disable : 4047) // pointer to function in a return
 
 /*  Values for the second argument to access */
-#define F_OK  0  /* Test for existence.  */
-#define W_OK  2  /* Test for write permission.  */
-#define R_OK  4  /* Test for read permission.  */
+#define F_OK 0                  /* Test for existence.  */
+#define W_OK 2                  /* Test for write permission.  */
+#define R_OK 4                  /* Test for read permission.  */
 
 #include <io.h>
 #else
@@ -47,21 +47,29 @@
 #define IN
 #define OUT
 //-------------------------------------------------------------------------------------------------------------
-typedef int              HFILE;
-typedef unsigned char  uchar_t;
-typedef uint32_t        uint_t;
+typedef int HFILE;
+typedef unsigned char uchar_t;
+typedef uint32_t uint_t;
 //-------------------------------------------------------------------------------------------------------------
 /* Unaligned-safe access to the 32-bit fields packed inside a page */
-static inline uint32_t  mydb_rd32 (const void *p)
-{ uint32_t v; memcpy (&v, p, sizeof (v)); return v; }
-static inline void      mydb_wr32 (void *p, uint32_t v)
-{ memcpy (p, &v, sizeof (v)); }
+static inline uint32_t mydb_rd32(const void *p)
+{
+    uint32_t v;
+    memcpy(&v, p, sizeof(v));
+    return v;
+}
+static inline void mydb_wr32(void *p, uint32_t v)
+{
+    memcpy(p, &v, sizeof(v));
+}
 //-------------------------------------------------------------------------------------------------------------
-#define SWAP(X,Y) \
-    do { unsigned char _buf[sizeof (*(X))]; \
-         memmove(_buf, (X), sizeof (_buf)); \
-         memmove((X),  (Y), sizeof (_buf)); \
-         memmove((Y), _buf, sizeof (_buf)); \
-       } while (0)
+#define SWAP(X, Y)                                                                                           \
+    do                                                                                                       \
+    {                                                                                                        \
+        unsigned char _buf[sizeof(*(X))];                                                                    \
+        memmove(_buf, (X), sizeof(_buf));                                                                    \
+        memmove((X), (Y), sizeof(_buf));                                                                     \
+        memmove((Y), _buf, sizeof(_buf));                                                                    \
+    } while (0)
 //-------------------------------------------------------------------------------------------------------------
 #endif // _STDAFX_H_

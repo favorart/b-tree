@@ -2,7 +2,8 @@
 
 - Build: `make`; tests: `make test`; sanitizers: `make clean && make SAN=1 test`.
   CI builds with `-Werror` on gcc and clang, with and without ASan/UBSan: keep the build warning-free.
-- C99 + POSIX. Keep the original code style (spacing, `IN`/`OUT` markers, `s`/`e` type prefixes).
+- C99 + POSIX. Format with `make format` (clang-format, `.clang-format`); keep the `IN`/`OUT` markers
+  and the `s`/`e` type prefixes. Comments are in English; the public API in `mydb.h` has doxygen comments.
 - Entries inside a page are unaligned: read and write the 32-bit fields with `mydb_rd32` / `mydb_wr32`.
 - A `sBlock *` from `block_create` lives in the page cache and is valid only during one operation.
 - Crash safety rule: between two `block_create` calls the tree in memory must be valid,

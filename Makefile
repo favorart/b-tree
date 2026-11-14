@@ -3,6 +3,7 @@
 #   make            - static library libmydb.a and the demo
 #   make test       - build and run the tests
 #   make SAN=1 test - the same with AddressSanitizer + UndefinedBehaviorSanitizer
+#   make format     - clang-format the sources
 #   make clean
 
 CC      ?= cc
@@ -19,7 +20,7 @@ LIB_SOURCES := mydb.c mydb_block.c mydb_block_delete.c mydb_block_low.c mydb_cac
                mydb_error.c mydb_log.c mydb_methods.c mydb_techb.c
 LIB_OBJECTS := $(LIB_SOURCES:.c=.o)
 
-.PHONY: all lib demo test clean
+.PHONY: all lib demo test format clean
 
 all: lib demo
 
@@ -40,6 +41,9 @@ test: tests/test_mydb
 
 %.o: %.c $(wildcard *.h)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+format:
+	clang-format -i *.c *.h tests/*.c
 
 clean:
 	rm -f *.o tests/*.o libmydb.a mydb_demo tests/test_mydb
