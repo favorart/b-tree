@@ -161,6 +161,8 @@ until it holds about a half of the used space, the next entry becomes the median
 Sequential inserts are recognised at the edge: when the new key is greater (less) than all keys
 of the very right (left) child, the last (first) entry becomes the median, the full page stays full
 and the next keys fill the new empty page.
+An update of an existing key whose new value fits into its page splits nothing: before splitting a full
+page on the way down, the insertion looks for the key below it and changes the value in place.
 
 ### Deletion
 

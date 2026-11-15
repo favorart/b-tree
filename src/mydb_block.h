@@ -81,6 +81,8 @@ void block_release(IN sDB *db, IN uint32_t offset);
 //-------------------------------------------------------------------------------------------------------------
 eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *value);
 eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value);
+/* an existing key whose new value fits into its page: no split, no new page */
+eDBState block_update_in_place(IN sBlock *block, IN const sDBT *key, IN const sDBT *value);
 int block_delete_deep(IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 /* key - the key being inserted (sequential inserts split at the edge) or NULL (in two halves) */

@@ -704,6 +704,34 @@ static void test_error_reasons(void **state)
     CHECK(db_close(db) == 0);
 }
 //-------------------------------------------------------------------------------------------------------------
+/* updating existing keys allocates no page: a split at the insertion point is for new keys only */
+static void test_update_no_new_pages(void **state)
+{
+    (void)state;
+    sDBC conf = small_conf();
+    sDB *db = dbcreate("t_update.db", &conf);
+    CHECK(db);
+    uchar_t v[16];
+    memset(v, 'a', sizeof(v));
+    for (uint32_t i = 0U; i < 5000U; ++i)
+    {
+        uint32_t k = __builtin_bswap32((i * 761U) % 5000U); /* a random order */
+        CHECK(db_insert(db, &k, sizeof(k), v, sizeof(v)) == 0);
+    }
+    sDBStat before, after;
+    CHECK(db_stats(db, &before) == 0);
+    memset(v, 'b', sizeof(v));
+    for (uint32_t i = 0U; i < 5000U; ++i)
+    {
+        uint32_t k = __builtin_bswap32((i * 761U) % 5000U);
+        CHECK(db_insert(db, &k, sizeof(k), v, sizeof(v)) == 0);
+    }
+    CHECK(db_stats(db, &after) == 0);
+    CHECK(after.file_pages == before.file_pages && after.empty_pages == 0U);
+    CHECK(db_check(db) == 5000);
+    CHECK(db_close(db) == 0);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
     (void)state;
@@ -750,6 +778,7 @@ int main(void)
         cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_error_reasons),
         cmocka_unit_test(test_null_arguments),
+        cmocka_unit_test(test_update_no_new_pages),
         cmocka_unit_test(test_failed_insert_not_replayed),
         cmocka_unit_test(test_journal_short_write),
         cmocka_unit_test(test_journal_bounded),

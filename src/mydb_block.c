@@ -92,6 +92,13 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
         /* Keep all block non-full through the path */
         if (block_isfull(ychild))
         {
+            /* the key may be in this subtree: an update that fits splits nothing (and adds no page) */
+            uint32_t block_offset = block->offset_, child_offset = ychild->offset_;
+            if (DONE == block_update_in_place(ychild, key, value))
+                return DONE;
+            if (!(block = block_create(block->owner_db_, block_offset)) ||
+                !(ychild = block_create(block->owner_db_, child_offset)))
+                return FAIL;
             sBlock *zchild = block_create(block->owner_db_, MYDB_OFFSET2NEW);
             if (!zchild)
                 return FAIL;
@@ -104,6 +111,31 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
         //-----------------------------------------
         /* insert into non-full block */
         return block_add_nonfull(ychild, key, value);
+    }
+}
+/*  Update the value of an existing key without splits on the way down, if the new value fits
+ *  into the page of the key. FAIL: no such key or no room (the caller inserts the usual way).
+ */
+eDBState block_update_in_place(IN sBlock *block, IN const sDBT *key, IN const sDBT *value)
+{
+    for (;;)
+    {
+        sDBT iter = {0};
+        sDBT *k = block_key_next(block, &iter, NULL);
+        while (k && key_compare(k, key) < 0)
+            k = block_key_next(block, k, NULL);
+        if (k && !key_compare(k, key))
+        {
+            sDBT old = block_key_data(block, k);
+            if (value->size > old.size && value->size - old.size > block->head_->free_size_)
+                return FAIL;
+            TRACE(MYDB_TRACE_TREE, "page %u: update in place", (unsigned)block->offset_);
+            if (DONE != block_change(block, key, value, k, MYDB_INVALIDPTR))
+                return FAIL;
+            return block_write(block);
+        }
+        if (*block_type(block) == Leaf || !(block = block_create(block->owner_db_, block_lptr(block, k))))
+            return FAIL;
     }
 }
 eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value)
