@@ -332,8 +332,24 @@ static void test_full(void **state)
     CHECK(db_close(db) == 0);
     CHECK((db = dbopen("t_full.db")));
     verify_all(db, &m);
+    /* a full file: every delete succeeds and frees the space, no page is lost */
+    size_t fit = m.n;
+    for (uint32_t i = 0U; i < fit; ++i)
+    {
+        uint32_t k = i * 2654435761U;
+        CHECK(db_delete(db, &k, sizeof(k)) == 0);
+    }
+    sDBStat st;
+    CHECK(db_check(db) == 0 && db_stats(db, &st) == 0);
+    CHECK(st.file_pages == st.leaf_pages + st.inner_pages && st.file_pages <= 2U);
+    for (uint32_t i = 0U; i < fit; ++i)
+    {
+        uint32_t k = i * 2654435761U;
+        CHECK(db_insert(db, &k, sizeof(k), v, 40U) == 0); /* the same keys fit again */
+    }
+    verify_all(db, &m);
     CHECK(db_close(db) == 0);
-    printf("full file: ok (%zu keys fit)\n", m.n);
+    printf("full file: ok (%zu keys fit, deleted and inserted again)\n", m.n);
     model_free(&m);
 }
 //-------------------------------------------------------------------------------------------------------------
