@@ -54,7 +54,7 @@ struct DBStat
     unsigned long keys;        /**< keys in the tree */
     unsigned long leaf_pages;  /**< leaf pages in the tree */
     unsigned long inner_pages; /**< inner pages in the tree */
-    unsigned long empty_pages; /**< pages without keys (lazy deletion leaves them) */
+    unsigned long empty_pages; /**< pages without keys: none after the rebalancing deletion */
     unsigned long used_bytes;  /**< bytes taken by the entries of all tree pages */
     unsigned long
         capacity_bytes;       /**< payload bytes of all tree pages: used_bytes / capacity_bytes is the fill */
