@@ -1,0 +1,13 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+ColumnLimit: 110
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AlignConsecutiveMacros: true
+AlignTrailingComments: true
+PointerAlignment: Right
+SpaceBeforeParens: ControlStatements
+SortIncludes: Never
+ReflowComments: false
