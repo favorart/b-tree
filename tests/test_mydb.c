@@ -4,6 +4,7 @@
 #define _XOPEN_SOURCE 700
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -572,6 +573,65 @@ static void test_failed_insert_not_replayed(void **state)
     printf("failed insert after a crash: ok (%u keys fit)\n", failed);
 }
 //-------------------------------------------------------------------------------------------------------------
+/* a record cut by a full disk is removed from the journal: the records after it are recovered */
+static void test_journal_short_write(void **state)
+{
+    (void)state;
+    const char *name = "t_short.db";
+    sDBC conf = small_conf();
+    sDB *db = dbcreate(name, &conf);
+    CHECK(db);
+    CHECK(db_close(db) == 0);
+    uchar_t v[40];
+    memset(v, 'v', sizeof(v));
+
+    fflush(NULL);
+    pid_t pid = fork();
+    CHECK(pid >= 0);
+    if (pid == 0)
+    {
+        in_child = true;
+        if (!(db = dbopen(name)))
+            _exit(2);
+        for (uint32_t k = 0U; k < 100U; ++k)
+            if (db_insert(db, &k, sizeof(k), v, sizeof(v)))
+                _exit(3);
+        struct stat st;
+        if (stat("t_short.db.log", &st))
+            _exit(4);
+        /* the disk is full in the middle of the next record */
+        signal(SIGXFSZ, SIG_IGN);
+        struct rlimit lim, small;
+        getrlimit(RLIMIT_FSIZE, &lim);
+        small = lim;
+        small.rlim_cur = (rlim_t)st.st_size + 30U;
+        setrlimit(RLIMIT_FSIZE, &small);
+        uint32_t k = 100U;
+        if (db_insert(db, &k, sizeof(k), v, sizeof(v)) == 0)
+            _exit(5); /* the journal record is not written: the insert must fail */
+        setrlimit(RLIMIT_FSIZE, &lim);
+        k = 101U;
+        if (db_insert(db, &k, sizeof(k), v, sizeof(v)))
+            _exit(6);
+        _exit(0); /* crash */
+    }
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+    CHECK((db = dbopen(name)));
+    for (uint32_t k = 0U; k <= 101U; ++k)
+    {
+        void *val = NULL;
+        size_t len = 0U;
+        int found = db_select(db, &k, sizeof(k), &val, &len) == 0;
+        free(val);
+        CHECK(found == (k != 100U));
+    }
+    CHECK(db_close(db) == 0);
+    printf("short journal write: ok\n");
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
     (void)state;
@@ -617,6 +677,7 @@ int main(void)
         cmocka_unit_test(test_full_delete_some),
         cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_failed_insert_not_replayed),
+        cmocka_unit_test(test_journal_short_write),
         cmocka_unit_test(test_crash_recovery),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

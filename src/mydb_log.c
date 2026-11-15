@@ -79,7 +79,11 @@ bool mydb_log_write(IN sLog *log, IN sLogRec *record)
     mydb_wr32(buf + size - sizeof(uint32_t), fnv1a(FNV1A_INIT, buf, size - sizeof(uint32_t)));
     //-----------------------------------
     /* one write () per record: the OS keeps it, even if the process crashes */
-    bool fail = (write(log->fd, buf, size) != (ssize_t)size);
+    off_t end = lseek(log->fd, 0, SEEK_END);
+    bool fail = (end < 0 || write(log->fd, buf, size) != (ssize_t)size);
+    /* a record cut by a full disk would hide the next ones from the recovery: cut it off */
+    if (fail && end >= 0 && ftruncate(log->fd, end))
+        fprintf(stderr, "mydb journal: the cut record is not removed: %s\n", strerror(errno));
     free(buf);
     return fail;
 }
