@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-// #define _DEBUG
 #define MYDB_BITSINBYTE 8U
 //-------------------------------------------------------------------------------------------------------------
 /** @name Defaults, used when a field of sDBC is zero */
@@ -37,7 +36,7 @@
 /** @} */
 //-------------------------------------------------------------------------------------------------------------
 /** Result of internal operations */
-typedef enum db_state // : uchar_t
+typedef enum db_state
 {
     DONE = 0,
     FAIL = -1

@@ -203,7 +203,7 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
             {
                 mydb_errno = MYDB_ERR_BWRITE;
                 fprintf(stderr, "cache push%s\n", strmyerror(mydb_errno));
-                exit(EXIT_FAILURE); // !!!
+                exit(EXIT_FAILURE); /* a fatal I/O error, see Limitations in README */
             }
             //-----------------------------------------------
             /* keep the pointer to the freed block */
@@ -225,7 +225,7 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
         {
             mydb_errno = MYDB_ERR_CCHSET;
             fprintf(stderr, "cache set%s\n", strmyerror(mydb_errno));
-            exit(EXIT_FAILURE); // !!!
+            exit(EXIT_FAILURE); /* a fatal I/O error, see Limitations in README */
         }
         //-----------------------------------------------
         hl = &Cch->blHash_[h];
@@ -243,7 +243,6 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
             ++Cch->n_pgs;
         }
         //-----------------------------------------------
-        // block_free () <--
         memset(hl->block, 0, sizeof(*hl->block));
         memset(hl_memory, 0, Cch->sz_pg);
         hl->block->memory_ = hl_memory;
