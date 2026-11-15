@@ -341,6 +341,11 @@ a GitHub release with `include/` and `libmydb.a` for Linux x86-64.
 Only the 3 latest releases are kept; older tags stay in git.
 The on-disk format has its own number (`MYDB_VERSION`): files of another format are rejected.
 
+## History
+
+What the 2015 code was, what was changed in 2026 and why, with the measurements (in Russian):
+[`docs/history.ru.md`](docs/history.ru.md).
+
 ## License
 
 [GPL-2.0](LICENSE)
