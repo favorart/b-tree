@@ -197,7 +197,7 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
        *  checkpoint over it gives the right result (operations are idempotent).
        */
             TRACE(MYDB_TRACE_PAGES, "cache miss page %u: evict page %u%s", (unsigned)offset,
-                  (unsigned)Cch->LRULast->offset,
+                  (unsigned)(Cch->LRULast->offset - 1U), /* stored + 1 */
                   Cch->LRULast->block->dirty_ ? " (dirty: write all dirty pages)" : "");
             if (Cch->LRULast->block->dirty_ && mydb_sync_pages(db))
             {
