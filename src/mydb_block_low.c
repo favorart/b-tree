@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "mydb_block_low.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /*  Entry layout inside a block (all numbers are uint32, unaligned):
@@ -61,26 +62,25 @@ sDBT block_key_data(IN sBlock *block, IN const sDBT *key)
 
     return value;
 }
-#ifdef _DEBUG
-int block_print_dbg(IN sBlock *block, IN const char *name)
+void block_trace_dump(IN sBlock *block, IN const char *what)
 {
+    if (!TRACE_ON(MYDB_TRACE_DUMP))
+        return;
     sDBHB *h = block->head_;
-    printf(">>> %s\n", name);
-    printf("type: %s\t", (h->node_type_ == Free) ? "Free" : (h->node_type_ == Pass) ? "Pass" : "Leaf");
-    printf("nkvs: %u\t", (unsigned)h->kvs_count_);
-    printf("offs: %u\t", (unsigned)h->db_offset_);
-    printf("free: %u\t", (unsigned)h->free_size_);
-    printf("ptr0: %d\n", (int)h->pointer_0_);
+    TRACE(MYDB_TRACE_DUMP, "page %u after %s: %s, %u keys, %u B free, ptr0=%d", (unsigned)h->db_offset_, what,
+          (h->node_type_ == Free)   ? "free"
+          : (h->node_type_ == Pass) ? "inner"
+                                    : "leaf",
+          (unsigned)h->kvs_count_, (unsigned)h->free_size_, (int)h->pointer_0_);
 
-    uint_t vsz = 0U;
+    char buf[MYDB_TRACE_KEYBUF];
+    uint_t vsz = 0U, i = 0U;
     sDBT iter = {0};
     for (sDBT *k = block_key_next(block, &iter, &vsz); k; k = block_key_next(block, k, &vsz))
-        printf("ksz=%u vsz=%u k='%.*s' rptr=%d\n", (unsigned)k->size, (unsigned)vsz, (int)k->size,
-               (const char *)k->data, (int)block_rptr(block, k));
-    printf("\n");
-    return 0;
+        TRACE(MYDB_TRACE_DUMP, "  [%u] %s (%u B) value %u B rptr=%d", i++,
+              mydb_trace_key(k->data, k->size, buf), (unsigned)k->size, (unsigned)vsz,
+              (int)block_rptr(block, k));
 }
-#endif // _DEBUG
 //-------------------------------------------------------------------------------------------------------------
 /* LOW-LEVEL OPERATIONS */
 
@@ -169,9 +169,7 @@ eDBState block_change(IN sBlock *block, IN const sDBT *key, IN const sDBT *value
         mydb_wr32((uchar_t *)bkey->data + key->size + value->size, Rptr);
     }
     //-----------------------------------------
-#ifdef _DEBUG
-    block_print_dbg(block, "change");
-#endif
+    block_trace_dump(block, "change");
     return DONE;
 }
 eDBState block_insert(IN sBlock *block, IN const sDBT *key, IN const sDBT *value, OUT sDBT *bkey,
@@ -242,9 +240,7 @@ eDBState block_insert(IN sBlock *block, IN const sDBT *key, IN const sDBT *value
         ++(*(block_nkvs(block)));
     }
     //-----------------------------------------
-#ifdef _DEBUG
-    block_print_dbg(block, "insert");
-#endif
+    block_trace_dump(block, "insert");
     return DONE;
 }
 /*  Remove the entry with the given key together with its
@@ -277,9 +273,7 @@ eDBState block_delete(IN sBlock *block, IN const sDBT *key, IN bool lptr)
         block->head_->free_size_ += size_mem;
         --(*(block_nkvs(block)));
         //-----------------------------------------
-#ifdef _DEBUG
-        block_print_dbg(block, "delete");
-#endif
+        block_trace_dump(block, "delete");
         return DONE;
     }
     //-----------------------------------------
