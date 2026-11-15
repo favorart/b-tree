@@ -659,6 +659,27 @@ static void test_journal_bounded(void **state)
     printf("journal growth: ok (at most %lld bytes)\n", (long long)biggest);
 }
 //-------------------------------------------------------------------------------------------------------------
+/* NULL handles and NULL out parameters are errors, not crashes */
+static void test_null_arguments(void **state)
+{
+    (void)state;
+    void *val = NULL;
+    size_t len = 0U;
+    sDBStat st;
+    CHECK(db_insert(NULL, "k", 1U, "v", 1U) == -1 && db_error() == MYDB_ERR_FPARAM);
+    CHECK(db_delete(NULL, "k", 1U) == -1);
+    CHECK(db_select(NULL, "k", 1U, &val, &len) == -1);
+    CHECK(db_flush(NULL) == -1 && db_check(NULL) == -1 && db_stats(NULL, &st) == -1);
+    CHECK(db_close(NULL) == 0);
+    sDBC conf = small_conf();
+    sDB *db = dbcreate("t_null.db", &conf);
+    CHECK(db);
+    CHECK(db_insert(db, "k", 1U, "v", 1U) == 0);
+    CHECK(db_select(db, "k", 1U, NULL, &len) == -1 && db_select(db, "k", 1U, &val, NULL) == -1);
+    CHECK(db_stats(db, NULL) == -1);
+    CHECK(db_close(db) == 0);
+}
+//-------------------------------------------------------------------------------------------------------------
 /* db_error () keeps the reason of the last error for the caller */
 static void test_error_reasons(void **state)
 {
@@ -728,6 +749,7 @@ int main(void)
         cmocka_unit_test(test_full_delete_some),
         cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_error_reasons),
+        cmocka_unit_test(test_null_arguments),
         cmocka_unit_test(test_failed_insert_not_replayed),
         cmocka_unit_test(test_journal_short_write),
         cmocka_unit_test(test_journal_bounded),
