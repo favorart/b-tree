@@ -13,5 +13,5 @@
 - On-disk format changes need `MYDB_VERSION` bumped in `include/mydb.h` and the README updated.
 - Debug with the trace (`MYDB_TRACE=1..4`, `src/mydb_trace.h`), not with `printf`: add a `TRACE ()` point for a new action.
 - Every behaviour change needs a test: `tests/test_units.c` for a module, `tests/test_mydb.c` through the API; `db_check` validates the tree.
-- Releases are automatic: every push to `main` that passes CI is tagged `v0.0.N` and released (`.github/workflows/ci.yml`).
+- Releases are automatic: every push to `master` that passes CI is tagged `v0.0.N` and released (`.github/workflows/ci.yml`).
 - Commit messages and PR titles follow Conventional Commits: `fix:`, `feat:`, `refactor:`, `test:`, `docs:`, `ci:`, `build:`.

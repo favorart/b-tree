@@ -299,7 +299,7 @@ and 32-byte values. 50 000 keys, gcc 11 `-O2`, WSL2 on a desktop CPU, one run:
 A checkpoint (`db_flush`) takes 25–40 ms, mostly `fsync`.
 When the cache is smaller than the tree, random modifications are about 10 times slower:
 evicting a dirty page writes *all* dirty pages and calls `fsync` (see [Journal and recovery](#journal-and-recovery)) —
-the price of the simple crash-consistency scheme. CI runs the benchmark on every push to `main` and shows the table in the job summary.
+the price of the simple crash-consistency scheme. CI runs the benchmark on every push to `master` and shows the table in the job summary.
 
 ## Worst cases
 
@@ -363,8 +363,9 @@ Each cell: this tree / the rebuilt one. What it shows:
 
 ## Versions and releases
 
-Every push to `main` that passes CI gets the next patch tag `v0.0.N` and a GitHub release
-with `include/` and `libmydb.a` for Linux and macOS ([`.github/workflows/ci.yml`](.github/workflows/ci.yml));
+Every push to `master` that passes CI gets the next patch tag `v0.0.N` and a GitHub release
+with `include/` and `libmydb.a` for Linux and macOS ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)),
+built from the tag: `db_version ()` returns it (`git describe`: `0.0.5`, or `0.0.5-3-gabc1234` after it);
 a minor or major version is a tag pushed by hand, the numbering continues from it.
 Only the 3 latest releases are kept; older tags stay in git.
 The on-disk format has its own number (`MYDB_VERSION`): files of another format are rejected.

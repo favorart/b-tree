@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
     # documentation does not need a build: no run, no tag, no release
     paths-ignore: [ "**.md", "docs/**", "LICENSE" ]
   pull_request:
@@ -12,7 +12,7 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR cancels its previous run; main runs always finish (they tag).
+# A new push to a PR cancels its previous run; master runs always finish (they tag).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -60,7 +60,7 @@ jobs:
     - name: tests
       run: make -j4 test
 
-  # informational, nothing is compared: only for main, the numbers go to the job summary
+  # informational, nothing is compared: only for master, the numbers go to the job summary
   benchmark:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -70,38 +70,12 @@ jobs:
     - name: benchmark
       run: make -j4 bench BENCH_N=100000 | tee -a "$GITHUB_STEP_SUMMARY"
 
-  # Release files of a main commit that passed every check: the headers and the static library.
-  package:
-    name: package (${{ matrix.os }})
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [ linux, macos ]
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, macos-latest ]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    steps:
-    - uses: actions/checkout@v5
-    - name: build the library only
-      run: make -j4 lib CFLAGS="-O2 -g"
-    - name: pack
-      run: |
-        mkdir -p pkg/lib
-        cp -r include pkg/
-        cp build/libmydb.a pkg/lib/
-        cp LICENSE README.md pkg/
-        tar -czf "mydb-${{ runner.os }}-${{ runner.arch }}.tar.gz" -C pkg .
-    - uses: actions/upload-artifact@v5
-      with:
-        name: mydb-${{ runner.os }}
-        path: mydb-*.tar.gz
-        if-no-files-found: error
-        retention-days: 1
 
-  # Tag the main commit with the next patch version: v0.0.1, v0.0.2, ...
+  # Tag a master commit that passed every check with the next patch version: v0.0.1, v0.0.2, ...
   # A minor or major bump is a tag pushed by hand; the numbering continues from it.
   tag:
-    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [ linux, macos ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -124,11 +98,41 @@ jobs:
         git push origin "$tag"
         echo "new_tag=$tag" >> "$GITHUB_OUTPUT"
 
+  # Release files built from the tag (db_version () returns it): the headers and the static library.
+  package:
+    name: package (${{ matrix.os }})
+    needs: tag
+    if: needs.tag.outputs.new_tag != ''
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        ref: ${{ needs.tag.outputs.new_tag }}
+        fetch-depth: 0
+    - name: build the library only
+      run: make -j4 lib CFLAGS="-O2 -g"
+    - name: pack
+      run: |
+        mkdir -p pkg/lib
+        cp -r include pkg/
+        cp build/libmydb.a pkg/lib/
+        cp LICENSE README.md pkg/
+        tar -czf "mydb-${{ needs.tag.outputs.new_tag }}-${{ runner.os }}-${{ runner.arch }}.tar.gz" -C pkg .
+    - uses: actions/upload-artifact@v5
+      with:
+        name: mydb-${{ runner.os }}
+        path: mydb-*.tar.gz
+        if-no-files-found: error
+        retention-days: 1
+
   # GitHub Release for the new tag with the files built above.
   # Only the 3 latest releases are kept (their tags stay).
   release:
-    needs: tag
-    if: needs.tag.outputs.new_tag != ''
+    needs: [ tag, package ]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

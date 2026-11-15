@@ -163,6 +163,8 @@ long db_check(sDB *db);
 int db_stats(sDB *db, sDBStat *st);
 /** The largest key + value size for the page size of this database */
 size_t db_max_kv_size(const sDB *db);
+/** Library version from the git tag it was built from: "0.0.5", "0.0.5-3-gabc1234" after the tag, "unknown" */
+const char *db_version(void);
 /** @name Trace levels for db_trace() and the MYDB_TRACE environment variable */
 /** @{ */
 #define MYDB_TRACE_OFF   0 /**< no trace */

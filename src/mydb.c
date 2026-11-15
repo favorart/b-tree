@@ -73,3 +73,11 @@ int db_stats(sDB *db, sDBStat *st)
     return block_stats(db, st);
 }
 //-------------------------------------------------------------------------------------------------------------
+#ifndef MYDB_LIB_VERSION
+#define MYDB_LIB_VERSION "unknown" /* set by the Makefile from the git tag */
+#endif
+const char *db_version(void)
+{
+    return MYDB_LIB_VERSION;
+}
+//-------------------------------------------------------------------------------------------------------------
