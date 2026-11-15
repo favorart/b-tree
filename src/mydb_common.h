@@ -42,4 +42,46 @@ static inline void mydb_wr32(void *p, uint32_t v)
     memcpy(p, &v, sizeof(v));
 }
 //-------------------------------------------------------------------------------------------------------------
+/* the implementation part of the public types (include/mydb.h) */
+#define MYDB_BITSINBYTE 8U
+/*  On-disk format: "MYDB" and the version */
+#define MYDB_MAGIC   0x4244594DU
+#define MYDB_VERSION 2U
+/** Result of internal operations */
+typedef enum db_state
+{
+    DONE = 0,
+    FAIL = -1
+} eDBState;
+/** The file header, at offset 0 */
+//-------------------------------------------------------------------------------------------------------------
+typedef struct DBFileHeader sDBFH;
+struct DBFileHeader
+{
+    uint32_t magic_;       /**< MYDB_MAGIC */
+    uint32_t version_;     /**< MYDB_VERSION */
+    uint32_t db_size_;     /**< const */
+    uint32_t page_size_;   /**< const */
+    uint32_t cache_size_;  /**< const */
+    uint32_t block_count_; /**< const: number of data pages */
+    uint32_t techb_count_; /**< const: number of bitmap pages */
+    uint32_t nodes_count_; /**< used blocks, changed by the bitmap */
+    uint32_t offset2root_; /**< the root block, changed when the tree grows or shrinks */
+};
+//-------------------------------------------------------------------------------------------------------------
+typedef struct Block sBlock;
+typedef struct Block sTechB;
+typedef struct PageCache sCache;
+typedef struct Logging sLog;
+/* the private fields of struct DB */
+#define MYDB_PRIVATE_FIELDS                                                                                  \
+    int hfile_; /* -1 when not opened */                                                                     \
+    sDBFH head_;                                                                                             \
+    sBlock *root_;                                                                                           \
+    sCache *cache_;                                                                                          \
+    sLog *log_;                                                                                              \
+    bool replaying_; /* recovery in progress: do not journal */                                              \
+    sTechB *techb_array_;                                                                                    \
+    uint32_t techb_last0_;
+//-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_COMMON_H_

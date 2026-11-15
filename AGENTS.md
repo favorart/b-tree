@@ -10,7 +10,8 @@
 - Crash safety rule: between two `block_create` calls the tree in memory must be valid,
   because a cache eviction may write all dirty pages at that moment (see `mydb_cache_push` in `src/mydb_cache.c`).
   Make the changes of one logical step (e.g. a key replacement in two pages) without fetching pages in between.
-- On-disk format changes need `MYDB_VERSION` bumped in `include/mydb.h` and the README updated.
+- On-disk format changes need `MYDB_VERSION` bumped in `src/mydb_common.h` and the README updated.
+- `include/mydb.h` is the API only: internal types and the private fields of `struct DB` (`MYDB_PRIVATE_FIELDS`) live in `src/mydb_common.h`, which every file of the library includes first.
 - Debug with the trace (`MYDB_TRACE=1..4`, `src/mydb_trace.h`), not with `printf`: add a `TRACE ()` point for a new action.
 - Every behaviour change needs a test (cmocka, `assert_*` through `CHECK`): `tests/test_units.c` for a module, `tests/test_mydb.c` through the API; `db_check` validates the tree.
 - Releases are automatic: every push to `master` that passes CI is tagged `v0.0.N` and released (`.github/workflows/ci.yml`).
