@@ -99,12 +99,18 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
             if (!(block = block_create(block->owner_db_, block_offset)) ||
                 !(ychild = block_create(block->owner_db_, child_offset)))
                 return FAIL;
-            sBlock *zchild = block_create(block->owner_db_, MYDB_OFFSET2NEW);
+            sDB *db = block->owner_db_;
+            sBlock *zchild = block_create(db, MYDB_OFFSET2NEW);
             if (!zchild)
                 return FAIL;
-            /* split the block, if there is a full one */
-            if (DONE != block_split_child(block, ychild, zchild, key))
+            /* split the block, if there is a full one; a failed split gives the new page back */
+            uint32_t zoff = zchild->offset_;
+            if (!(block = block_create(db, block_offset)) || !(ychild = block_create(db, child_offset)) ||
+                !(zchild = block_create(db, zoff)) || DONE != block_split_child(block, ychild, zchild, key))
+            {
+                block_release(db, zoff);
                 return FAIL;
+            }
             /* the median key went up into this block: look again */
             continue;
         }

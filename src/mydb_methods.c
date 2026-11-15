@@ -114,9 +114,19 @@ static int mydb_split_root(IN sDB *db, IN const sDBT *key)
     uint32_t old_root = rb->offset_;
     /* alloc new free blocks */
     sBlock *new_root = block_create(db, MYDB_OFFSET2NEW);
-    sBlock *new_block = block_create(db, MYDB_OFFSET2NEW);
-    if (!new_root || !new_block || !(rb = block_create(db, old_root)))
+    if (!new_root)
         return -1;
+    uint32_t root_off = new_root->offset_;
+    sBlock *new_block = block_create(db, MYDB_OFFSET2NEW);
+    uint32_t block_off = new_block ? new_block->offset_ : MYDB_INVALIDPTR;
+    if (!new_block || !(rb = block_create(db, old_root)) || !(new_root = block_create(db, root_off)) ||
+        !(new_block = block_create(db, block_off)))
+    { /* do not lose the pages taken already: they are not in the tree */
+        block_release(db, root_off);
+        if (block_off != MYDB_INVALIDPTR)
+            block_release(db, block_off);
+        return -1;
+    }
 
     (*block_type(new_root)) = Pass;
     (*block_nkvs(new_root)) = 0;
