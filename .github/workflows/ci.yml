@@ -33,3 +33,11 @@ jobs:
       env:
         MYDB_CRASH_ROUNDS: 8
       run: make CC=${{ matrix.cc }} SAN=${{ matrix.san }} CFLAGS="-O2 -g -Werror" test
+
+  benchmark:
+    # informational: the numbers go to the job summary, nothing is compared
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: benchmark
+      run: make bench BENCH_N=100000 | tee -a "$GITHUB_STEP_SUMMARY"
