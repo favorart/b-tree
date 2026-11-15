@@ -69,7 +69,7 @@ static sBlock *mydb_root(IN sDB *db)
     return (db->root_ = block_create(db, db->head_.offset2root_));
 }
 /* keep the root non-full: split it and grow the tree by one level */
-static int mydb_split_root(IN sDB *db)
+static int mydb_split_root(IN sDB *db, IN const sDBT *key)
 {
     sBlock *rb = mydb_root(db);
     if (!rb)
@@ -93,7 +93,7 @@ static int mydb_split_root(IN sDB *db)
     TRACE(MYDB_TRACE_TREE, "the root page %u is full: new root page %u above it, the tree grows",
           (unsigned)old_root, (unsigned)new_root->offset_);
     //-----------------------------------------
-    return (DONE == block_split_child(new_root, rb, new_block)) ? 0 : -1;
+    return (DONE == block_split_child(new_root, rb, new_block, key)) ? 0 : -1;
 }
 //-------------------------------------------------------------------------------------------------------------
 sDB *mydb_create(IN const char *file, IN const sDBC *conf)
@@ -297,7 +297,7 @@ int mydb_delete(IN sDB *db, IN const sDBT *key)
     int rc;
     do
     {
-        if (mydb_split_root(db) || !mydb_root(db))
+        if (mydb_split_root(db, NULL) || !mydb_root(db))
             return -1;
     } while ((rc = block_delete_deep(db->root_, key)) > 0);
     //-----------------------------------------
@@ -323,7 +323,7 @@ int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     if (mydb_logging(db, LOG_INSERT, key, data))
         return -1;
     //-----------------------------------------
-    if (mydb_split_root(db) || !mydb_root(db))
+    if (mydb_split_root(db, key) || !mydb_root(db))
         return -1;
     int rc = (DONE == block_add_nonfull(db->root_, key, data)) ? 0 : -1;
     TRACE(MYDB_TRACE_OPS, "insert %s", rc ? "failed" : "done");

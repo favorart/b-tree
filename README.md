@@ -154,6 +154,9 @@ flowchart TD
 
 A full page is split by bytes, not by the number of keys: the left half keeps entries
 until it holds about a half of the used space, the next entry becomes the median.
+Sequential inserts are recognised at the edge: when the new key is greater (less) than all keys
+of the very right (left) child, the last (first) entry becomes the median, the full page stays full
+and the next keys fill the new empty page.
 
 ### Deletion
 
@@ -296,27 +299,33 @@ the same keys inserted into a fresh database in a random order — about what re
 
 | case | keys | height | pages | empty pages | fill | lookup, us |
 |---|--:|---|---|--:|---|---|
-| random inserts (baseline) | 63230 | 6 / 6 | 9959 / 10336 | 0 | 48% / 46% | 0.47 / 0.41 |
-| ascending inserts | 100000 | 7 / 6 | 19999 / 15789 | 0 | 38% / 48% | 0.57 / 0.49 |
-| descending inserts | 100000 | 7 / 6 | 24994 / 15789 | 0 | 30% / 48% | 0.63 / 0.49 |
-| delete 90% at random | 10007 | 7 / 5 | 12238 / 1592 | 8290 | 6% / 47% | 0.37 / 0.29 |
-| keep every 100th key | 1000 | 7 / 4 | 2558 / 157 | 2002 | 3% / 48% | 0.24 / 0.22 |
-| delete all but 10 keys | 10 | 7 / 1 | 14 / 1 | 10 | 5% / 75% | 0.19 / 0.05 |
-| sliding window (a queue) | 5000 | 5 / 5 | 1005 / 788 | 5 | 37% / 48% | 0.28 / 0.29 |
-| random insert/delete churn | 50050 | 6 / 6 | 12588 / 7948 | 764 | 30% / 47% | 0.47 / 0.40 |
-| max-size values (vs 16-byte values) | 6334 | 6 / 5 | 1564 / 1266 | 0 | 50% / 38% | 0.34 / 0.28 |
+| random inserts (baseline) | 63230 | 6 / 6 | 10006 / 10414 | 9 | 48% / 46% | 0.43 / 0.44 |
+| ascending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.42 / 0.47 |
+| descending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.40 / 0.54 |
+| delete 90% at random | 10007 | 5 / 5 | 8796 / 1595 | 5882 | 9% / 47% | 0.30 / 0.29 |
+| keep every 100th key | 1000 | 5 / 4 | 2112 / 158 | 2000 | 4% / 48% | 0.20 / 0.21 |
+| delete all but 10 keys | 10 | 5 / 1 | 10 / 1 | 6 | 8% / 75% | 0.15 / 0.05 |
+| sliding window (a queue) | 5000 | 4 / 5 | 559 / 795 | 3 | 67% / 47% | 0.27 / 0.31 |
+| random insert/delete churn | 50050 | 6 / 6 | 12659 / 7991 | 787 | 30% / 47% | 0.44 / 0.40 |
+| max-size values (vs 16-byte values) | 6334 | 6 / 4 | 1590 / 706 | 1 | 49% / 67% | 0.31 / 0.27 |
 
 Each cell: this tree / the rebuilt one. What it shows:
 
+- **Sequential inserts** fill the pages by 68% with the split at the insertion point (see [Insertion](#insertion)).
+  With splits in two halves they left half-full pages forever:
+
+  | case | height | pages | fill |
+  |---|---|---|---|
+  | ascending inserts, split in halves → at the edge | 7 → 5 | 19999 → 11111 | 38% → 68% |
+  | descending inserts, split in halves → at the edge | 7 → 5 | 24994 → 11111 | 30% → 68% |
+  | sliding window, split in halves → at the edge | 5 → 4 | 1005 → 559 | 37% → 67% |
+
+  Random inserts are not affected: only the very right (left) child of a page is split at the edge.
 - **Mass deletes** are the worst case of the lazy deletion: after deleting 90% of the keys the tree keeps
-  7.7 times more pages, two thirds of them empty, and two extra levels.
-  Rebalancing (merging and borrowing on delete) would keep the fill near the rebuilt one and lower the tree:
-  2 page reads less per lookup on a cold cache. The freed pages are reused by later inserts,
-  but the file never shrinks.
+  5.5 times more pages, two thirds of them empty.
+  Rebalancing (merging and borrowing on delete) would keep the fill near the rebuilt one and lower the tree.
+  The freed pages are reused by later inserts, but the file never shrinks.
 - **Churn** (random inserts and deletes) slowly lowers the fill: 30% against 47%; merges would help here too.
-- **Ascending and descending inserts** are not about deletion: a page is split in two halves, so the left (right)
-  halves stay half-full forever. Rebalancing on delete does not help; a split at the insertion point
-  for sequential inserts would (pages near 100%).
 - **The baseline fill is about 50%**, not the usual 69% of a B-tree: a page counts as full at 75%
   (a quarter is kept for a median and an entry growth, see [Page layout](#page-layout)).
 - With the tree in memory a lookup costs little either way (at most 1.3 times slower):

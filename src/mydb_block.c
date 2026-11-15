@@ -96,7 +96,7 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
             if (!zchild)
                 return FAIL;
             /* split the block, if there is a full one */
-            if (DONE != block_split_child(block, ychild, zchild))
+            if (DONE != block_split_child(block, ychild, zchild, key))
                 return FAIL;
             /* the median key went up into this block: look again */
             continue;
@@ -151,8 +151,12 @@ eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value
     }
 }
 //-------------------------------------------------------------------------------------------------------------
-/* ychild - full node; zchild - new free node */
-eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zchild)
+/*  ychild - full node; zchild - new free node; key - the key being inserted or NULL.
+ *  A split in two halves by bytes leaves both pages half-full. When the key goes beyond the last
+ *  (first) entry of ychild - sequential inserts - the median is the last (first) entry instead:
+ *  the full part stays full and the next keys fill the new empty page.
+ */
+eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zchild, IN const sDBT *key)
 {
     /*-----------------------------------------
    *    x - parent,   y,z - childs,   k - key
@@ -164,10 +168,26 @@ eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zch
     //-----------------------------------------
     /* Calculate the number of items to delegate */
     uint_t amount_size = 0U, count = 0U, vsz = 0U;
+    uint_t nkvs = *block_nkvs(ychild), median = nkvs; /* index of the median; nkvs - in two halves */
+    /* only the very right (left) child: a random key hits the edge of an inner child too */
+    bool very_right = (block_lptr(parent, NULL) == ychild->offset_);
+    bool very_left = (parent->head_->pointer_0_ == ychild->offset_);
+    if (key && nkvs >= 2U && (very_right || very_left))
+    {
+        sDBT it = {0}, *e = block_key_next(ychild, &it, NULL);
+        sDBT first = *e, last = *e;
+        while ((e = block_key_next(ychild, e, NULL)))
+            last = *e;
+        if (very_right && key_compare(key, &last) > 0)
+            median = nkvs - 1U;
+        else if (very_left && key_compare(key, &first) < 0)
+            median = 0U;
+    }
 
     sDBT iter = {0};
     sDBT *k = block_key_next(ychild, &iter, &vsz);
-    while (k && amount_size < (uint_t)(ychild->free_ - ychild->data_) / 2U)
+    while (k && ((median < nkvs) ? (count < median)
+                                 : (amount_size < (uint_t)(ychild->free_ - ychild->data_) / 2U)))
     { /* Iterate through the elements, those stay in ychild */
         ++count;
         amount_size += (uint_t)(k->size + vsz + MYDB_ENTRY_OVERHEAD);

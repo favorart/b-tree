@@ -84,7 +84,8 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
 eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value);
 int block_delete_deep(IN sBlock *block, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
-eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zchild);
+/* key - the key being inserted (sequential inserts split at the edge) or NULL (in two halves) */
+eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zchild, IN const sDBT *key);
 /* check the tree invariants: number of keys or -1 */
 long block_check_tree(IN sDB *db);
 /* the page statistics of the tree, 0 or -1 */
