@@ -11,7 +11,7 @@ enum mydb_error
   MYDB_ERR_NFREES, MYDB_ERR_CCHSET /* , ... */
 };
 
-e_mydb_err mydb_errno;
+extern e_mydb_err mydb_errno;
 const char*  strmyerror (e_mydb_err err);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_ERROR_H_
