@@ -1,10 +1,9 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 
 #ifndef _MYDB_ERROR_H_
 #define _MYDB_ERROR_H_
 //-------------------------------------------------------------------------------------------------------------
-typedef enum mydb_error e_mydb_err;
-enum mydb_error
+typedef enum mydb_error
 {
     MYDB_ERR_NONE,
     MYDB_ERR_FPARAM,
@@ -17,7 +16,7 @@ enum mydb_error
     MYDB_ERR_KVSIZE,
     MYDB_ERR_FORMAT,
     MYDB_ERR_LOGWRT /* , ... */
-};
+} e_mydb_err;
 
 extern e_mydb_err mydb_errno;
 const char *strmyerror(e_mydb_err err);

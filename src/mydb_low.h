@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb.h"
 
 #ifndef _MYDB_LOW_H_

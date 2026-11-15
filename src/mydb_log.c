@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb_low.h"
 #include "mydb_log.h"
 #include "mydb_log_low.h"
@@ -36,8 +36,7 @@ sLog *mydb_log_open(IN const char *db_file, IN bool trunc)
     strcat(log->filename, suffix);
     //-----------------------------------
     log->lsn = 0U;
-    log->fd = open(log->filename, O_CREAT | ((trunc) ? O_TRUNC : 0) | O_RDWR | O_APPEND | O_BINARY,
-                   S_IREAD | S_IWRITE);
+    log->fd = open(log->filename, O_CREAT | ((trunc) ? O_TRUNC : 0) | O_RDWR | O_APPEND, S_IRUSR | S_IWUSR);
     if (log->fd == -1)
     {
         fprintf(stderr, "log open '%s': %s\n", log->filename, strerror(errno));
