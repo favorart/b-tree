@@ -27,13 +27,6 @@
 #define MYDB_MIN_PAGE_SIZE   512U /**< the smallest page size */
 #define MYDB_MIN_CACHE_PAGES 128U /**< a smaller cache is enlarged to this number of pages */
 /** @} */
-/** @name Library version (semantic versioning; a release is tagged vMAJOR.MINOR.PATCH) */
-/** @{ */
-#define MYDB_LIB_VERSION_MAJOR  0
-#define MYDB_LIB_VERSION_MINOR  0
-#define MYDB_LIB_VERSION_PATCH  4
-#define MYDB_LIB_VERSION_STRING "0.0.4"
-/** @} */
 /** @name On-disk format: "MYDB" and the version */
 /** @{ */
 #define MYDB_MAGIC   0x4244594DU
@@ -170,6 +163,8 @@ long db_check(sDB *db);
 int db_stats(sDB *db, sDBStat *st);
 /** The largest key + value size for the page size of this database */
 size_t db_max_kv_size(const sDB *db);
+/** Library version from the git tag it was built from: "0.0.5", "0.0.5-3-gabc1234" after the tag, "unknown" */
+const char *db_version(void);
 /** @name Trace levels for db_trace() and the MYDB_TRACE environment variable */
 /** @{ */
 #define MYDB_TRACE_OFF   0 /**< no trace */
