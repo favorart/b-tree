@@ -58,6 +58,7 @@ db_close  (db);                            /* flush + free */
 The same operations are available as function pointers of `struct DB`
 (`db->insert`, `db->select`, `db->delete`, `db->sync`, `db->close`) with `struct DBT { void *data; size_t size; }` arguments,
 as required by the course API ([`include/mydb.h`](include/mydb.h), documented with doxygen comments).
+The handle is opaque: the API sees only these pointers, the fields of the implementation are private.
 
 | Function | Returns |
 |---|---|
@@ -369,7 +370,7 @@ with `include/` and `libmydb.a` for Linux and macOS ([`.github/workflows/ci.yml`
 built from the tag: `db_version ()` returns it (`git describe`: `0.0.5`, or `0.0.5-3-gabc1234` after it);
 a minor or major version is a tag pushed by hand, the numbering continues from it.
 Only the 3 latest releases are kept; older tags stay in git.
-The on-disk format has its own number (`MYDB_VERSION`): files of another format are rejected.
+The on-disk format has its own number (`MYDB_VERSION` in [`src/mydb_common.h`](src/mydb_common.h)): files of another format are rejected.
 
 ## History
 
