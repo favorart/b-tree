@@ -1,7 +1,7 @@
 # mydb: B-tree key-value storage
 #
 #   make            - build/libmydb.a and build/mydb_demo
-#   make test       - build and run the tests
+#   make test       - build and run the unit and the integration tests
 #   make SAN=1 test - the same with AddressSanitizer + UndefinedBehaviorSanitizer
 #   make format     - clang-format the sources
 #   make clean
@@ -48,8 +48,8 @@ $(BUILD)/test_%: $(BUILD)/test_%.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 # the tests create their database files in build/
-test: $(BUILD)/test_mydb
-	cd $(BUILD) && ./test_mydb
+test: $(BUILD)/test_units $(BUILD)/test_mydb
+	cd $(BUILD) && ./test_units && ./test_mydb
 
 $(BUILD):
 	mkdir -p $@

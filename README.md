@@ -29,7 +29,7 @@ the bugs found by review and sanitizers are fixed, and the unfinished parts
 ```bash
 make                # build/libmydb.a and build/mydb_demo
 ./build/mydb_demo   # creates demo.db and demo.db.log
-make test           # the tests
+make test           # unit and integration tests
 make SAN=1 test     # the same with AddressSanitizer + UndefinedBehaviorSanitizer
 ```
 
@@ -82,7 +82,7 @@ Configuration (`sDBC`), a zero field takes the default:
 | [`include/`](include) | the public API: `mydb.h` (and `stdafx.h` with the common includes) |
 | [`src/`](src) | the implementation and the internal headers |
 | [`examples/demo.c`](examples/demo.c) | a small example of the API |
-| [`tests/`](tests) | integration tests against a model |
+| [`tests/`](tests) | unit tests of the modules and integration tests against a model |
 | `build/` | build output (not in git) |
 
 ## Architecture
