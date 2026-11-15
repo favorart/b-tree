@@ -139,9 +139,15 @@ static eDBState split_if_full(IN sDB *db, IN uint32_t parent_off, IN uint32_t ch
 
     sBlock *parent = block_create(db, parent_off);
     sBlock *sibling = block_create(db, MYDB_OFFSET2NEW);
-    if (!parent || !sibling || !(child = block_create(db, child_off)) ||
-        DONE != block_split_child(parent, child, sibling, NULL))
+    if (!sibling)
         return FAIL;
+    uint32_t sibling_off = sibling->offset_;
+    if (!parent || !(child = block_create(db, child_off)) || !(parent = block_create(db, parent_off)) ||
+        !(sibling = block_create(db, sibling_off)) || DONE != block_split_child(parent, child, sibling, NULL))
+    { /* the new page is not in the tree: give it back */
+        block_release(db, sibling_off);
+        return FAIL;
+    }
 
     *split = true;
     return DONE;
