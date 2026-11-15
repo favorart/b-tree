@@ -337,8 +337,21 @@ void block_release(IN sDB *db, IN uint32_t offset)
  *  the key counters match. Returns the number of keys or -1.
  */
 static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *lo, IN const sDBT *hi,
-                                IN int depth, IN OUT int *leaf_depth)
+                                IN int depth, IN OUT int *leaf_depth, IN OUT uchar_t *seen)
 {
+    /* every page of the tree is referenced once and is marked used in the bitmap */
+    bool used = false;
+    if (offset >= db->head_.block_count_ || (seen[offset / 8U] >> (offset % 8U)) & 1U ||
+        DONE != techb_get_bit(db, offset, &used) || !used)
+    {
+        fprintf(stderr, "check: block %u: %s\n", (unsigned)offset,
+                (offset < db->head_.block_count_ && (seen[offset / 8U] >> (offset % 8U)) & 1U)
+                    ? "referenced twice"
+                    : "not a used page");
+        return -1;
+    }
+    seen[offset / 8U] |= (uchar_t)(1U << (offset % 8U));
+
     sBlock *b = block_create(db, offset);
     if (!b)
         return -1;
@@ -358,9 +371,10 @@ static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *l
     bool leaf = (*block_type(b) == Leaf);
     const sDBT *prev = lo;
     sDBT prev_buf = {0}, iter = {0};
-    uint32_t n = 0U;
-    for (sDBT *k = block_key_next(b, &iter, NULL); k; k = block_key_next(b, k, NULL), ++n)
+    uint32_t n = 0U, vsz = 0U, used_bytes = 0U;
+    for (sDBT *k = block_key_next(b, &iter, &vsz); k; k = block_key_next(b, k, &vsz), ++n)
     {
+        used_bytes += (uint32_t)(MYDB_ENTRY_OVERHEAD + k->size + vsz);
         sDBT cur = *k;
         if (prev && key_compare(prev, &cur) >= 0)
         {
@@ -370,7 +384,7 @@ static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *l
         }
         if (!leaf)
         {
-            long c = block_check_subtree(db, block_lptr(b, &cur), prev, &cur, depth + 1, leaf_depth);
+            long c = block_check_subtree(db, block_lptr(b, &cur), prev, &cur, depth + 1, leaf_depth, seen);
             if (c < 0)
             {
                 count = -1;
@@ -383,6 +397,12 @@ static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *l
         prev = &prev_buf;
         iter = cur;
         k = &iter;
+    }
+    if (count >= 0 && used_bytes + b->head_->free_size_ != b->size_ - (uint32_t)sizeof(sDBHB))
+    {
+        fprintf(stderr, "check: block %u: free size %u does not match the entries\n", (unsigned)offset,
+                (unsigned)b->head_->free_size_);
+        count = -1;
     }
     if (count >= 0 && n != *block_nkvs(b))
     {
@@ -398,7 +418,7 @@ static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *l
     if (count >= 0 && !leaf)
     {
         /* the very right child; an inner block may have no keys and this single child */
-        long c = block_check_subtree(db, block_lptr(b, NULL), prev, hi, depth + 1, leaf_depth);
+        long c = block_check_subtree(db, block_lptr(b, NULL), prev, hi, depth + 1, leaf_depth, seen);
         count = (c < 0) ? -1 : count + c;
     }
     if (count >= 0 && leaf)
@@ -418,7 +438,22 @@ static long block_check_subtree(IN sDB *db, IN uint32_t offset, IN const sDBT *l
 long block_check_tree(IN sDB *db)
 {
     int leaf_depth = -1;
-    return block_check_subtree(db, db->head_.offset2root_, NULL, NULL, 0, &leaf_depth);
+    uchar_t *seen = calloc(db->head_.block_count_ / 8U + 1U, 1U);
+    if (!seen)
+        return -1;
+    long count = block_check_subtree(db, db->head_.offset2root_, NULL, NULL, 0, &leaf_depth, seen);
+    /* and no used page is outside the tree: a lost page is never reused */
+    uint32_t in_tree = 0U;
+    for (uint32_t i = 0U; count >= 0 && i < db->head_.block_count_; ++i)
+        in_tree += (seen[i / 8U] >> (i % 8U)) & 1U;
+    if (count >= 0 && in_tree != db->head_.nodes_count_)
+    {
+        fprintf(stderr, "check: %u pages are marked used, %u are in the tree\n",
+                (unsigned)db->head_.nodes_count_, (unsigned)in_tree);
+        count = -1;
+    }
+    free(seen);
+    return count;
 }
 //-------------------------------------------------------------------------------------------------------------
 /* walk the subtree and sum up the page statistics */
@@ -469,5 +504,50 @@ int block_stats(IN sDB *db, OUT sDBStat *st)
     memset(st, 0, sizeof(*st));
     st->file_pages = db->head_.nodes_count_;
     return block_stats_subtree(db, db->head_.offset2root_, 1U, st);
+}
+//-------------------------------------------------------------------------------------------------------------
+/* mark the pages of the subtree in the bit set; -1 on error or a page referenced twice */
+static int block_mark_subtree(IN sDB *db, IN uint32_t offset, IN OUT uchar_t *seen)
+{
+    if (offset >= db->head_.block_count_ || (seen[offset / 8U] >> (offset % 8U)) & 1U)
+        return -1;
+    seen[offset / 8U] |= (uchar_t)(1U << (offset % 8U));
+    sBlock *b = block_create(db, offset);
+    if (!b)
+        return -1;
+    if (*block_type(b) == Leaf)
+        return 0;
+    /* the child pointers first: deeper blocks may push this one out of the cache */
+    uint32_t n = *block_nkvs(b), *children = malloc((n + 1U) * sizeof(*children)), i = 0U;
+    if (!children)
+        return -1;
+    children[i++] = b->head_->pointer_0_;
+    sDBT iter = {0};
+    for (sDBT *k = block_key_next(b, &iter, NULL); k && i <= n; k = block_key_next(b, k, NULL))
+        children[i++] = block_rptr(b, k);
+    int rc = 0;
+    for (uint32_t c = 0U; c < i && !rc; ++c)
+        rc = block_mark_subtree(db, children[c], seen);
+    free(children);
+    return rc;
+}
+int block_rebuild_bitmap(IN sDB *db)
+{
+    uchar_t *seen = calloc(db->head_.block_count_ / 8U + 1U, 1U);
+    if (!seen)
+        return -1;
+    /* walk first, then change the bitmap without fetching pages: it is valid between the fetches */
+    int rc = block_mark_subtree(db, db->head_.offset2root_, seen);
+    if (!rc)
+    {
+        uint32_t before = db->head_.nodes_count_;
+        for (uint32_t i = 0U; i < db->head_.block_count_; ++i)
+            techb_set_bit(db, i, (seen[i / 8U] >> (i % 8U)) & 1U);
+        db->techb_last0_ = 0U;
+        TRACE(MYDB_TRACE_OPS, "recovery: the bitmap is rebuilt from the tree, %u pages freed",
+              (unsigned)(before - db->head_.nodes_count_));
+    }
+    free(seen);
+    return rc;
 }
 //-------------------------------------------------------------------------------------------------------------

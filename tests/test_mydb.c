@@ -410,6 +410,7 @@ static void test_crash(int round, bool torn_tail)
 
     CHECK((db = dbopen(name)));
     verify_all(db, &m);
+    CHECK(db_check(db) == (long)m.n); /* the tree, and no page lost by the crash */
     /* and once more after a clean close */
     CHECK(db_close(db) == 0);
     CHECK((db = dbopen(name)));
