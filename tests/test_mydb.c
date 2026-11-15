@@ -659,6 +659,30 @@ static void test_journal_bounded(void **state)
     printf("journal growth: ok (at most %lld bytes)\n", (long long)biggest);
 }
 //-------------------------------------------------------------------------------------------------------------
+/* db_error () keeps the reason of the last error for the caller */
+static void test_error_reasons(void **state)
+{
+    (void)state;
+    CHECK(dbopen("t_no_such_file.db") == NULL && db_error() == MYDB_ERR_FNEXST);
+    FILE *f = fopen("t_not_mydb.db", "wb");
+    CHECK(f && fwrite("not a database file, but long enough to be read as a header", 1U, 60U, f) == 60U);
+    fclose(f);
+    CHECK(dbopen("t_not_mydb.db") == NULL && db_error() == MYDB_ERR_FORMAT);
+    CHECK(strlen(db_strerror(db_error())) > 0U);
+
+    sDBC conf = small_conf();
+    conf.db_size = 64U * 1024U;
+    sDB *db = dbcreate("t_reasons.db", &conf);
+    CHECK(db);
+    CHECK(db_insert(db, "k", 0U, "v", 1U) != 0 && db_error() == MYDB_ERR_KVSIZE);
+    uchar_t v[40] = {0};
+    uint32_t k = 0U;
+    while (db_insert(db, &k, sizeof(k), v, sizeof(v)) == 0)
+        CHECK(++k < 100000U);
+    CHECK(db_error() == MYDB_ERR_NFREEB); /* the file is full */
+    CHECK(db_close(db) == 0);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
     (void)state;
@@ -703,6 +727,7 @@ int main(void)
         cmocka_unit_test(test_full),
         cmocka_unit_test(test_full_delete_some),
         cmocka_unit_test(test_open_bad_header),
+        cmocka_unit_test(test_error_reasons),
         cmocka_unit_test(test_failed_insert_not_replayed),
         cmocka_unit_test(test_journal_short_write),
         cmocka_unit_test(test_journal_bounded),

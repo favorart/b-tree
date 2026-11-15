@@ -574,9 +574,10 @@ static void test_errors(void **state)
     {
         mydb_errno = (e_mydb_err)e;
         const char *s = strmyerror((e_mydb_err)e);
-        CHECK(s != NULL && s[0] == ':' && mydb_errno == MYDB_ERR_NONE);
+        CHECK(s != NULL && s[0] == ':' && mydb_errno == (e_mydb_err)e); /* the reason is kept */
+        CHECK(db_error() == e && !strcmp(db_strerror(e), s + 2));
     }
-    CHECK(strmyerror(MYDB_ERR_NONE) == NULL);
+    CHECK(strmyerror(MYDB_ERR_NONE) == NULL && !strcmp(db_strerror(MYDB_ERR_NONE), ""));
 
     sDB *db = small_db("u_err.db", 1U * 1024U * 1024U);
     CHECK(db != NULL);
