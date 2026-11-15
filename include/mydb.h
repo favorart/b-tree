@@ -16,7 +16,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define MYDB_BITSINBYTE 8U
 //-------------------------------------------------------------------------------------------------------------
 /** @name Defaults, used when a field of sDBC is zero */
 /** @{ */
@@ -29,18 +28,6 @@
 #define MYDB_MIN_PAGE_SIZE   512U /**< the smallest page size */
 #define MYDB_MIN_CACHE_PAGES 128U /**< a smaller cache is enlarged to this number of pages */
 /** @} */
-/** @name On-disk format: "MYDB" and the version */
-/** @{ */
-#define MYDB_MAGIC   0x4244594DU
-#define MYDB_VERSION 2U
-/** @} */
-//-------------------------------------------------------------------------------------------------------------
-/** Result of internal operations */
-typedef enum db_state
-{
-    DONE = 0,
-    FAIL = -1
-} eDBState;
 //-------------------------------------------------------------------------------------------------------------
 /** A key or a value: a byte string (see `man dbopen`) */
 typedef struct DBT sDBT;
@@ -74,27 +61,8 @@ struct DBStat
     unsigned long file_pages; /**< data pages marked used in the free-page bitmap */
 };
 //-------------------------------------------------------------------------------------------------------------
-/** The file header, at offset 0 */
-typedef struct DBFileHeader sDBFH;
-struct DBFileHeader
-{
-    uint32_t magic_;       /**< MYDB_MAGIC */
-    uint32_t version_;     /**< MYDB_VERSION */
-    uint32_t db_size_;     /**< const */
-    uint32_t page_size_;   /**< const */
-    uint32_t cache_size_;  /**< const */
-    uint32_t block_count_; /**< const: number of data pages */
-    uint32_t techb_count_; /**< const: number of bitmap pages */
-    uint32_t nodes_count_; /**< used blocks, changed by the bitmap */
-    uint32_t offset2root_; /**< the root block, changed when the tree grows or shrinks */
-};
-//-------------------------------------------------------------------------------------------------------------
-typedef struct Block sBlock;
-typedef struct Block sTechB;
-typedef struct PageCache sCache;
-typedef struct Logging sLog;
-
-/** A database handle */
+/** A database handle. The API sees the function pointers only; the fields of the implementation
+ *  are added when the library includes its internal header (src/mydb_common.h) first. */
 typedef struct DB sDB;
 struct DB
 {
@@ -112,18 +80,9 @@ struct DB
     /** Checkpoint: write the cached pages to disk */
     int (*sync)(struct DB *db);
     /** @} */
-    //---------------------------------------------
-    /* Private */
-    int hfile_; /* -1 when not opened */
-    sDBFH head_;
-    sBlock *root_;
-
-    sCache *cache_;
-    sLog *log_;
-    bool replaying_; /* recovery in progress: do not journal */
-    //---------------------------------------------
-    sTechB *techb_array_;
-    uint32_t techb_last0_;
+#ifdef MYDB_PRIVATE_FIELDS
+    MYDB_PRIVATE_FIELDS
+#endif
 };
 //-------------------------------------------------------------------------------------------------------------
 /**
