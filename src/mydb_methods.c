@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
@@ -122,7 +122,7 @@ sDB *mydb_create(IN const char *file, IN const sDBC *conf)
         return NULL;
     }
     //-----------------------------------------
-    db->hfile_ = open(file, O_CREAT | O_TRUNC | O_RDWR | O_BINARY, S_IREAD | S_IWRITE);
+    db->hfile_ = open(file, O_CREAT | O_TRUNC | O_RDWR, S_IRUSR | S_IWUSR);
     if (db->hfile_ == -1)
     {
         fprintf(stderr, "%s '%s': %s\n", error_prefix, file, strerror(errno));
@@ -192,7 +192,7 @@ sDB *mydb_open(IN const char *file)
         return NULL;
     }
     //-----------------------------------------
-    db->hfile_ = open(file, O_RDWR | O_BINARY, S_IREAD | S_IWRITE);
+    db->hfile_ = open(file, O_RDWR, S_IRUSR | S_IWUSR);
     if (db->hfile_ == -1)
     {
         fprintf(stderr, "%s '%s': %s\n", error_prefix, file, strerror(errno));

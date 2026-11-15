@@ -81,7 +81,7 @@ Configuration (`sDBC`), a zero field takes the default:
 
 | Path | Contents |
 |---|---|
-| [`include/`](include) | the public API: `mydb.h` (and `stdafx.h` with the common includes) |
+| [`include/`](include) | the public API: `mydb.h` |
 | [`src/`](src) | the implementation and the internal headers |
 | [`examples/demo.c`](examples/demo.c) | a small example of the API |
 | [`tests/`](tests) | unit tests of the modules, integration tests against a model, the worst cases |

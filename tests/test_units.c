@@ -5,7 +5,7 @@
  */
 #define _XOPEN_SOURCE 700
 
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb.h"
 #include "mydb_low.h"
 #include "mydb_error.h"

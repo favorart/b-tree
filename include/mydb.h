@@ -8,10 +8,13 @@
  * Every function returning @c int returns 0 on success and -1 on error;
  * mydb_errno (mydb_error.h) keeps the reason of the last error.
  */
-#include "stdafx.h"
-
 #ifndef _MYDB_H_
 #define _MYDB_H_
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 // #define _DEBUG
 #define MYDB_BITSINBYTE 8U
@@ -112,7 +115,7 @@ struct DB
     /** @} */
     //---------------------------------------------
     /* Private */
-    HFILE hfile_; /* -1 when not opened */
+    int hfile_; /* -1 when not opened */
     sDBFH head_;
     sBlock *root_;
 
@@ -121,7 +124,7 @@ struct DB
     bool replaying_; /* recovery in progress: do not journal */
     //---------------------------------------------
     sTechB *techb_array_;
-    uint_t techb_last0_;
+    uint32_t techb_last0_;
 };
 //-------------------------------------------------------------------------------------------------------------
 /**
@@ -182,6 +185,6 @@ const char *db_version(void);
 void db_trace(int level, FILE *out);
 //-------------------------------------------------------------------------------------------------------------
 /** Compare keys: memcmp() of the common prefix, then the length; returns -1, 0 or 1 */
-int key_compare(IN const sDBT *k, IN const sDBT *key);
+int key_compare(const sDBT *k, const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_H_

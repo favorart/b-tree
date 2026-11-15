@@ -5,7 +5,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb.h"
 
 //-------------------------------------------------------------------------------------------------------------

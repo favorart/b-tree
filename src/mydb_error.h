@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 
 #ifndef _MYDB_ERROR_H_
 #define _MYDB_ERROR_H_

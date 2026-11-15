@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
