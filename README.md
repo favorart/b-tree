@@ -66,6 +66,8 @@ as required by the course API ([`include/mydb.h`](include/mydb.h), documented wi
 | `db_insert`, `db_delete`, `db_select`, `db_flush`, `db_close` | `0` on success, `-1` on error / key not found |
 | `db_max_kv_size (db)` | the largest key + value size for this page size |
 | `db_check (db)` | number of keys after checking the tree invariants, `-1` if broken |
+| `db_stats (db, &st)` | the shape of the tree: height, pages, empty pages, fill (`sDBStat`) |
+| `db_trace (level, out)` | the trace of the tree work, see [Debugging with the trace](#debugging-with-the-trace) |
 
 Configuration (`sDBC`), a zero field takes the default:
 
@@ -82,7 +84,7 @@ Configuration (`sDBC`), a zero field takes the default:
 | [`include/`](include) | the public API: `mydb.h` (and `stdafx.h` with the common includes) |
 | [`src/`](src) | the implementation and the internal headers |
 | [`examples/demo.c`](examples/demo.c) | a small example of the API |
-| [`tests/`](tests) | unit tests of the modules and integration tests against a model |
+| [`tests/`](tests) | unit tests of the modules, integration tests against a model, the worst cases |
 | [`bench/`](bench) | throughput benchmark |
 | `build/` | build output (not in git) |
 
@@ -165,7 +167,7 @@ Deletion follows the same rule "every page on the path is non-full" and never me
 - an inner root without keys is dropped and the tree becomes lower.
 
 All leaves stay at the same depth, but the pages are not rebalanced:
-space is reused by later inserts, the file never shrinks.
+space is reused by later inserts, the file never shrinks. The price is measured in [Worst cases](#worst-cases).
 
 ### Page cache
 
@@ -284,6 +286,41 @@ A checkpoint (`db_flush`) takes 25–40 ms, mostly `fsync`.
 When the cache is smaller than the tree, random modifications are about 10 times slower:
 evicting a dirty page writes *all* dirty pages and calls `fsync` (see [Journal and recovery](#journal-and-recovery)) —
 the price of the simple crash-consistency scheme. CI runs the benchmark on every push and shows the table in the job summary.
+
+## Worst cases
+
+[`tests/test_worst.c`](tests/test_worst.c) (a part of `make test`) runs the workloads that hurt this tree most,
+checks the tree with `db_check` and prints its shape (`db_stats`) next to a *rebuilt* tree:
+the same keys inserted into a fresh database in a random order — about what rebalancing would give.
+`./build/test_worst 100000`, 512-byte pages, 9-byte keys, 16-byte values, the whole tree in the cache:
+
+| case | keys | height | pages | empty pages | fill | lookup, us |
+|---|--:|---|---|--:|---|---|
+| random inserts (baseline) | 63230 | 6 / 6 | 9959 / 10336 | 0 | 48% / 46% | 0.47 / 0.41 |
+| ascending inserts | 100000 | 7 / 6 | 19999 / 15789 | 0 | 38% / 48% | 0.57 / 0.49 |
+| descending inserts | 100000 | 7 / 6 | 24994 / 15789 | 0 | 30% / 48% | 0.63 / 0.49 |
+| delete 90% at random | 10007 | 7 / 5 | 12238 / 1592 | 8290 | 6% / 47% | 0.37 / 0.29 |
+| keep every 100th key | 1000 | 7 / 4 | 2558 / 157 | 2002 | 3% / 48% | 0.24 / 0.22 |
+| delete all but 10 keys | 10 | 7 / 1 | 14 / 1 | 10 | 5% / 75% | 0.19 / 0.05 |
+| sliding window (a queue) | 5000 | 5 / 5 | 1005 / 788 | 5 | 37% / 48% | 0.28 / 0.29 |
+| random insert/delete churn | 50050 | 6 / 6 | 12588 / 7948 | 764 | 30% / 47% | 0.47 / 0.40 |
+| max-size values (vs 16-byte values) | 6334 | 6 / 5 | 1564 / 1266 | 0 | 50% / 38% | 0.34 / 0.28 |
+
+Each cell: this tree / the rebuilt one. What it shows:
+
+- **Mass deletes** are the worst case of the lazy deletion: after deleting 90% of the keys the tree keeps
+  7.7 times more pages, two thirds of them empty, and two extra levels.
+  Rebalancing (merging and borrowing on delete) would keep the fill near the rebuilt one and lower the tree:
+  2 page reads less per lookup on a cold cache. The freed pages are reused by later inserts,
+  but the file never shrinks.
+- **Churn** (random inserts and deletes) slowly lowers the fill: 30% against 47%; merges would help here too.
+- **Ascending and descending inserts** are not about deletion: a page is split in two halves, so the left (right)
+  halves stay half-full forever. Rebalancing on delete does not help; a split at the insertion point
+  for sequential inserts would (pages near 100%).
+- **The baseline fill is about 50%**, not the usual 69% of a B-tree: a page counts as full at 75%
+  (a quarter is kept for a median and an entry growth, see [Page layout](#page-layout)).
+- With the tree in memory a lookup costs little either way (at most 1.3 times slower):
+  the difference is in the page reads when the cache is cold and in the disk space.
 
 ## Limitations
 
