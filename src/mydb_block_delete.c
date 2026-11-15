@@ -132,7 +132,7 @@ static eDBState split_if_full(IN sDB *db, IN uint32_t parent_off, IN uint32_t ch
     sBlock *parent = block_create(db, parent_off);
     sBlock *sibling = block_create(db, MYDB_OFFSET2NEW);
     if (!parent || !sibling || !(child = block_create(db, child_off)) ||
-        DONE != block_split_child(parent, child, sibling))
+        DONE != block_split_child(parent, child, sibling, NULL))
         return FAIL;
 
     *split = true;
