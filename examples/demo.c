@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
     db_insert(db, "kiwi", 4U, "brown", 5U); /* update */
     db_delete(db, "banana", 6U);
 
-    printf("max key+value size: %zu bytes\n", db_max_kv_size(db));
+    printf("mydb %s, max key+value size: %zu bytes\n", db_version(), db_max_kv_size(db));
     printf("after insert/update/delete:\n");
     print_value(db, "apple");
     print_value(db, "banana");

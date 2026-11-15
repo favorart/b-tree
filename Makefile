@@ -12,6 +12,10 @@ CFLAGS  ?= -O2 -g
 override CFLAGS += -std=c99 -Wall -Wextra -D_XOPEN_SOURCE=700 -Iinclude -Isrc
 LDFLAGS ?=
 
+# the version comes from the git tag: 0.0.5, or 0.0.5-3-gabc1234 three commits after it
+VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null | sed 's/^v//')
+override CFLAGS += -DMYDB_LIB_VERSION=\"$(or $(VERSION),unknown)\"
+
 ifeq ($(SAN),1)
   override CFLAGS  += -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all
   override LDFLAGS += -fsanitize=address,undefined

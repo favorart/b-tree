@@ -536,6 +536,7 @@ static void test_log_replay(void)
 //-------------------------------------------------------------------------------------------------------------
 static void test_config(void)
 {
+    CHECK(db_version() && *db_version()); /* set from the git tag by the Makefile */
     sDB *db = dbcreate("u_default.db", NULL); /* a sparse 512 MB file */
     CHECK(db != NULL);
     if (db)
