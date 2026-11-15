@@ -11,16 +11,25 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         cc: [ gcc, clang ]
-    name: ${{ matrix.cc }}
+        san: [ 0, 1 ]
+    name: ${{ matrix.cc }}${{ matrix.san == 1 && ' + ASan/UBSan' || '' }}
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: build
-      run: make CC=${{ matrix.cc }}
+    - name: build (warnings are errors)
+      run: make CC=${{ matrix.cc }} SAN=${{ matrix.san }} CFLAGS="-O2 -g -Werror"
+
+    - name: demo
+      run: ./build/mydb_demo /tmp/demo.db
+
+    - name: tests
+      env:
+        MYDB_CRASH_ROUNDS: 8
+      run: make CC=${{ matrix.cc }} SAN=${{ matrix.san }} CFLAGS="-O2 -g -Werror" test
