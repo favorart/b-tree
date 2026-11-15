@@ -394,6 +394,13 @@ int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     if (mydb_logging(db, LOG_INSERT, key, data))
         return -1;
     //-----------------------------------------
+    /* before a root split or a refusal for a full file: an update that fits needs neither */
+    sBlock *rb = mydb_root(db);
+    if (rb && (block_isfull(rb) || !mydb_room_for_insert(db)) && DONE == block_update_in_place(rb, key, data))
+    {
+        TRACE(MYDB_TRACE_OPS, "insert done: updated in place");
+        return mydb_log_result(db, 0);
+    }
     if (!mydb_room_for_insert(db))
     {
         mydb_errno = MYDB_ERR_NFREEB; /* the rest is kept for deletes */
