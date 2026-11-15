@@ -47,6 +47,8 @@ static inline void mydb_wr32(void *p, uint32_t v)
 #define MYDB_MAX_PAGE_SIZE (1U << 24) /* 16 MB */
 /* a checkpoint when the journal grows over 2 * cache size, but at least this */
 #define MYDB_LOG_LIMIT_MIN (4 * 1024 * 1024)
+/* fsync (), replaced by the tests to simulate a failing disk */
+extern int (*mydb_fsync)(int fd);
 /*  On-disk format: "MYDB" and the version */
 #define MYDB_MAGIC   0x4244594DU
 #define MYDB_VERSION 2U

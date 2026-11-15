@@ -36,6 +36,8 @@ bool mydb_cache_init(IN sDB *db);
 bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block);
 /* write all dirty pages, true on error */
 bool mydb_cache_sync(IN sDB *db);
+/* every cached page and the bitmap are written on the next sync (after a failed fsync) */
+void mydb_cache_mark_dirty(IN sDB *db);
 void mydb_cache_free(IN sDB *db);
 
 //-------------------------------------------------------------------------------------------------------------

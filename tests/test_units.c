@@ -742,6 +742,48 @@ static void test_rebalance(void **state)
     }
     fclose(f);
 }
+static int failing_fsync(int fd)
+{
+    (void)fd;
+    errno = EIO;
+    return -1;
+}
+/* after a failed fsync () the next flush writes the pages again before the checkpoint drops the journal */
+static void test_fsync_failure(void **state)
+{
+    (void)state;
+    sDB *db = small_db("u_fsync.db", 1U << 20);
+    CHECK(db != NULL);
+    char key[16];
+    for (int i = 0; i < 200; ++i)
+    {
+        snprintf(key, sizeof(key), "key%05d", i);
+        CHECK(db_insert(db, key, strlen(key), "value", 5U) == 0);
+    }
+    mydb_fsync = failing_fsync;
+    CHECK(db_flush(db) == -1);
+    mydb_fsync = fsync;
+
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    db_trace(MYDB_TRACE_PAGES, f);
+    CHECK(db_flush(db) == 0);
+    db_trace(MYDB_TRACE_OFF, NULL);
+    char line[256];
+    unsigned written = 0U, cached = 0U;
+    rewind(f);
+    while (fgets(line, sizeof(line), f))
+    {
+        const char *w = strstr(line, "write ");
+        if (w && sscanf(w, "write %u dirty pages of %u cached", &written, &cached) == 2)
+            break;
+    }
+    fclose(f);
+    CHECK(written > 0U && written == cached); /* all of them again */
+    CHECK(db_check(db) == 200);
+    db_close(db);
+}
+//-------------------------------------------------------------------------------------------------------------
 /* the trace names the page the cache evicts: it is one of the pages the cache has loaded */
 static void test_trace_evict(void **state)
 {
@@ -872,6 +914,7 @@ int main(void)
         cmocka_unit_test(test_rebalance),
         cmocka_unit_test(test_trace),
         cmocka_unit_test(test_trace_evict),
+        cmocka_unit_test(test_fsync_failure),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
