@@ -65,6 +65,21 @@ struct DBC
     size_t cache_size; /**< memory for the page cache; 16 MB by default */
 };
 //-------------------------------------------------------------------------------------------------------------
+/** Shape of the tree, see db_stats() */
+typedef struct DBStat sDBStat;
+struct DBStat
+{
+    unsigned height;           /**< levels: 1 for a single leaf */
+    unsigned long keys;        /**< keys in the tree */
+    unsigned long leaf_pages;  /**< leaf pages in the tree */
+    unsigned long inner_pages; /**< inner pages in the tree */
+    unsigned long empty_pages; /**< pages without keys (lazy deletion leaves them) */
+    unsigned long used_bytes;  /**< bytes taken by the entries of all tree pages */
+    unsigned long
+        capacity_bytes;       /**< payload bytes of all tree pages: used_bytes / capacity_bytes is the fill */
+    unsigned long file_pages; /**< data pages marked used in the free-page bitmap */
+};
+//-------------------------------------------------------------------------------------------------------------
 /** The file header, at offset 0 */
 typedef struct DBFileHeader sDBFH;
 struct DBFileHeader
@@ -151,6 +166,8 @@ int db_insert(sDB *db, void *key, size_t key_len, void *val, size_t val_len);
 int db_flush(sDB *db);
 /** Check the B-tree invariants (sorted keys, bounds, equal leaf depth): number of keys or -1 */
 long db_check(sDB *db);
+/** Walk the tree and fill the statistics of its shape (height, pages, fill): 0 or -1 */
+int db_stats(sDB *db, sDBStat *st);
 /** The largest key + value size for the page size of this database */
 size_t db_max_kv_size(const sDB *db);
 /** @name Trace levels for db_trace() and the MYDB_TRACE environment variable */

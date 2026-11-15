@@ -401,3 +401,53 @@ long block_check_tree(IN sDB *db)
     return block_check_subtree(db, db->head_.offset2root_, NULL, NULL, 0, &leaf_depth);
 }
 //-------------------------------------------------------------------------------------------------------------
+/* walk the subtree and sum up the page statistics */
+static int block_stats_subtree(IN sDB *db, IN uint32_t offset, IN unsigned depth, IN OUT sDBStat *st)
+{
+    sBlock *b = block_create(db, offset);
+    if (!b)
+        return -1;
+    /* copy: deeper blocks may push this one out of the cache */
+    uchar_t *mem = malloc(b->size_);
+    if (!mem)
+        return -1;
+    memcpy(mem, b->memory_, b->size_);
+    sBlock copy = *b;
+    copy.memory_ = mem;
+    copy.head_ = (sDBHB *)mem;
+    copy.data_ = mem + (b->data_ - b->memory_);
+    copy.free_ = mem + (b->free_ - b->memory_);
+    b = &copy;
+    //-----------------------------------------
+    bool leaf = (*block_type(b) == Leaf);
+    uint32_t nkvs = *block_nkvs(b);
+    if (depth > st->height)
+        st->height = depth;
+    st->keys += nkvs;
+    st->empty_pages += (nkvs == 0U);
+    st->used_bytes += b->size_ - (uint32_t)sizeof(sDBHB) - b->head_->free_size_;
+    st->capacity_bytes += b->size_ - (uint32_t)sizeof(sDBHB);
+    if (leaf)
+        ++st->leaf_pages;
+    else
+        ++st->inner_pages;
+    //-----------------------------------------
+    int rc = 0;
+    if (!leaf)
+    {
+        sDBT iter = {0};
+        for (sDBT *k = block_key_next(b, &iter, NULL); k && !rc; k = block_key_next(b, k, NULL))
+            rc = block_stats_subtree(db, block_lptr(b, k), depth + 1U, st);
+        if (!rc)
+            rc = block_stats_subtree(db, block_lptr(b, NULL), depth + 1U, st);
+    }
+    free(mem);
+    return rc;
+}
+int block_stats(IN sDB *db, OUT sDBStat *st)
+{
+    memset(st, 0, sizeof(*st));
+    st->file_pages = db->head_.nodes_count_;
+    return block_stats_subtree(db, db->head_.offset2root_, 1U, st);
+}
+//-------------------------------------------------------------------------------------------------------------

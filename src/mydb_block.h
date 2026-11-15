@@ -87,5 +87,7 @@ int block_delete_deep(IN sBlock *block, IN const sDBT *key);
 eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zchild);
 /* check the tree invariants: number of keys or -1 */
 long block_check_tree(IN sDB *db);
+/* the page statistics of the tree, 0 or -1 */
+int block_stats(IN sDB *db, OUT sDBStat *st);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_BLOCK_H_
