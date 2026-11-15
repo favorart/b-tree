@@ -17,8 +17,10 @@ the bugs found by review and sanitizers are fixed, and the unfinished parts
 
 - B-tree with keys and values of variable length stored right in the nodes
   (not a B+-tree): one page read per level on lookup.
-- Insertion with proactive splits on the way down (one pass, CLRS style).
-- Deletion: lazy, without node merging; see [Deletion](#deletion).
+- Insertion with proactive splits on the way down (one pass, CLRS style);
+  sequential keys split a page at the insertion point, so pages stay about 2/3 full.
+- Deletion with rebalancing: an underfull page (below 1/4) is merged with its sibling
+  or borrows entries from it, measured in bytes; see [Deletion](#deletion).
 - Free-space bitmap for page allocation, pages are reused after deletes.
 - LRU page cache with an open-addressing hash table and write-back of dirty pages.
 - Write-ahead journal with checksummed records, checkpoints and replay on open.
