@@ -3,6 +3,7 @@
 #   make            - build/libmydb.a and build/mydb_demo
 #   make test       - build and run the unit and the integration tests
 #   make SAN=1 test - the same with AddressSanitizer + UndefinedBehaviorSanitizer
+#   make bench      - throughput benchmark (BENCH_N keys, 200000 by default)
 #   make format     - clang-format the sources
 #   make clean
 
@@ -22,7 +23,7 @@ OBJECTS := $(SOURCES:src/%.c=$(BUILD)/%.o)
 HEADERS := $(wildcard include/*.h src/*.h)
 LIB     := $(BUILD)/libmydb.a
 
-.PHONY: all lib demo test format clean
+.PHONY: all lib demo test bench format clean
 
 all: lib demo
 
@@ -41,6 +42,9 @@ $(BUILD)/%.o: examples/%.c $(HEADERS) | $(BUILD)
 $(BUILD)/%.o: tests/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/%.o: bench/%.c $(HEADERS) | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD)/mydb_demo: $(BUILD)/demo.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
 
@@ -51,11 +55,18 @@ $(BUILD)/test_%: $(BUILD)/test_%.o $(LIB)
 test: $(BUILD)/test_units $(BUILD)/test_mydb
 	cd $(BUILD) && ./test_units && ./test_mydb
 
+$(BUILD)/bench_mydb: $(BUILD)/bench_mydb.o $(LIB)
+	$(CC) $(LDFLAGS) -o $@ $^
+
+BENCH_N ?= 200000
+bench: $(BUILD)/bench_mydb
+	cd $(BUILD) && ./bench_mydb $(BENCH_N)
+
 $(BUILD):
 	mkdir -p $@
 
 format:
-	clang-format -i include/*.h src/*.c src/*.h examples/*.c tests/*.c
+	clang-format -i include/*.h src/*.c src/*.h examples/*.c tests/*.c bench/*.c
 
 clean:
 	rm -rf $(BUILD)
