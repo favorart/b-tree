@@ -45,8 +45,15 @@ const char *strmyerror(e_mydb_err err)
         strerr = ": Writing the journal failed.";
         break;
     }
-    //-----------------------------------------
-    mydb_errno = MYDB_ERR_NONE;
-    return strerr;
+    return strerr; /* mydb_errno is kept: db_error () returns it to the caller */
+}
+int db_error(void)
+{
+    return (int)mydb_errno;
+}
+const char *db_strerror(int err)
+{
+    const char *s = strmyerror((e_mydb_err)err);
+    return s ? s + 2 : ""; /* without the ": " prefix */
 }
 //-------------------------------------------------------------------------------------------------------------

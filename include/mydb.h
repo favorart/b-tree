@@ -6,7 +6,7 @@
  * ordered by memcmp(), then by length. The storage is single-threaded.
  *
  * Every function returning @c int returns 0 on success and -1 on error;
- * mydb_errno (mydb_error.h) keeps the reason of the last error.
+ * db_error() returns the reason of the last error.
  */
 #ifndef _MYDB_H_
 #define _MYDB_H_
@@ -28,6 +28,22 @@
 #define MYDB_MIN_PAGE_SIZE   512U /**< the smallest page size */
 #define MYDB_MIN_CACHE_PAGES 128U /**< a smaller cache is enlarged to this number of pages */
 /** @} */
+//-------------------------------------------------------------------------------------------------------------
+/** Reason of the last error, see db_error() */
+typedef enum mydb_error
+{
+    MYDB_ERR_NONE,   /**< no error */
+    MYDB_ERR_FPARAM, /**< an incorrect parameter (configuration) */
+    MYDB_ERR_FNEXST, /**< the file does not exist or is not accessible */
+    MYDB_ERR_BWRITE, /**< writing pages to disk failed */
+    MYDB_ERR_OFFSET, /**< a page number out of the file */
+    MYDB_ERR_NFREEB, /**< no free page: the file is full */
+    MYDB_ERR_NFREES, /**< no free space in a page */
+    MYDB_ERR_CCHSET, /**< the page cache failed */
+    MYDB_ERR_KVSIZE, /**< an empty key or a key + value bigger than db_max_kv_size() */
+    MYDB_ERR_FORMAT, /**< not a mydb file or a broken one */
+    MYDB_ERR_LOGWRT  /**< writing the journal failed */
+} e_mydb_err;
 //-------------------------------------------------------------------------------------------------------------
 /** A key or a value: a byte string (see `man dbopen`) */
 typedef struct DBT sDBT;
@@ -121,6 +137,10 @@ int db_flush(sDB *db);
 long db_check(sDB *db);
 /** Walk the tree and fill the statistics of its shape (height, pages, fill): 0 or -1 */
 int db_stats(sDB *db, sDBStat *st);
+/** Reason of the last error (e_mydb_err); it is kept until the next error */
+int db_error(void);
+/** Text of an error code, "" for MYDB_ERR_NONE */
+const char *db_strerror(int err);
 /** The largest key + value size for the page size of this database */
 size_t db_max_kv_size(const sDB *db);
 /** Library version from the git tag it was built from: "0.0.5", "0.0.5-3-gabc1234" after the tag, "unknown" */

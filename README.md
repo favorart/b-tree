@@ -69,6 +69,7 @@ The handle is opaque: the API sees only these pointers, the fields of the implem
 | `db_insert`, `db_delete`, `db_select`, `db_flush`, `db_close` | `0` on success, `-1` on error / key not found |
 | `db_max_kv_size (db)` | the largest key + value size for this page size |
 | `db_check (db)` | number of keys after checking the tree invariants, `-1` if broken |
+| `db_error ()`, `db_strerror (err)` | the reason of the last error (`MYDB_ERR_*`) and its text |
 | `db_stats (db, &st)` | the shape of the tree: height, pages, empty pages, fill (`sDBStat`) |
 | `db_trace (level, out)` | the trace of the tree work, see [Debugging with the trace](#debugging-with-the-trace) |
 
