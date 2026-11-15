@@ -15,6 +15,7 @@
 #include "mydb_cache.h"
 #include "mydb_log.h"
 #include "mydb_log_low.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 static int n_checks, n_failed;
@@ -626,6 +627,67 @@ static void test_inner_node_cases(void)
     db_close(db);
 }
 //-------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------
+static void test_trace(void)
+{
+    char buf[MYDB_TRACE_KEYBUF];
+    CHECK(!strcmp(mydb_trace_key("kiwi", 4U, buf), "\"kiwi\""));
+    CHECK(!strcmp(mydb_trace_key("\x01\xff", 2U, buf), "0x01ff"));
+    char longkey[200];
+    memset(longkey, 'z', sizeof(longkey));
+    CHECK(strlen(mydb_trace_key(longkey, sizeof(longkey), buf)) < MYDB_TRACE_KEYBUF);
+    CHECK(strstr(buf, "...") != NULL);
+    //-----------------------------------------
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    db_trace(MYDB_TRACE_DUMP, f);
+    sDB *db = small_db("u_trace.db", 1U << 20);
+    CHECK(db != NULL);
+    char key[16];
+    for (int i = 0; i < 300; ++i)
+    {
+        snprintf(key, sizeof(key), "key%05d", i);
+        CHECK(db_insert(db, key, strlen(key), "value", 5U) == 0);
+    }
+    for (int i = 0; i < 300; ++i)
+    {
+        snprintf(key, sizeof(key), "key%05d", i);
+        CHECK(db_delete(db, key, strlen(key)) == 0);
+    }
+    CHECK(db_check(db) == 0);
+    db_close(db);
+    //-----------------------------------------
+    long size = ftell(f);
+    db_trace(MYDB_TRACE_OFF, NULL);
+    db = small_db("u_trace.db", 1U << 20);
+    db_close(db);
+    CHECK(ftell(f) == size); /* nothing is written with the trace off */
+    //-----------------------------------------
+    char *text = calloc((size_t)size + 1U, 1U);
+    CHECK(text != NULL);
+    if (text)
+    {
+        rewind(f);
+        CHECK(fread(text, 1U, (size_t)size, f) == (size_t)size);
+        const char *expected[] = {"create 'u_trace.db'", "insert key=\"key00000\" (8 B) value 5 B",
+                                  "journal: LSN",        "allocate page",
+                                  "cache miss page",     "split leaf page",
+                                  "the tree grows",      "page 0 after insert",
+                                  "replace \"key",       "release page",
+                                  "the tree is lower",   "delete done",
+                                  "checkpoint",          "close"};
+        for (size_t i = 0U; i < sizeof(expected) / sizeof(*expected); ++i)
+        {
+            if (!strstr(text, expected[i]))
+                fprintf(stderr, "no '%s' in the trace\n", expected[i]);
+            CHECK(strstr(text, expected[i]) != NULL);
+        }
+        free(text);
+    }
+    fclose(f);
+}
 int main(void)
 {
     RUN(test_key_compare);
@@ -644,6 +706,7 @@ int main(void)
     RUN(test_errors);
     RUN(test_check_detects_corruption);
     RUN(test_inner_node_cases);
+    RUN(test_trace);
     printf("%d checks, %d failed\n", n_checks, n_failed);
     return n_failed ? EXIT_FAILURE : EXIT_SUCCESS;
 }

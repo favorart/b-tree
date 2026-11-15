@@ -38,8 +38,5 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block);
 bool mydb_cache_sync(IN sDB *db);
 void mydb_cache_free(IN sDB *db);
 
-#ifdef _DEBUG_CACHE
-void mydb_cache_print_debug(IN sDB *db);
-#endif // _DEBUG_CACHE
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_CACHE_H_

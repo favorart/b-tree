@@ -3,6 +3,7 @@
 #include "mydb_log.h"
 #include "mydb_log_low.h"
 #include "mydb_error.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 static uint32_t fnv1a(IN uint32_t hash, IN const void *data, IN size_t size)
@@ -148,6 +149,15 @@ int mydb_logging(IN sDB *db, IN mydb_log_enum type, IN const sDBT *key, IN const
         record.val = *val;
     record.type = type;
     //-----------------------------------
+    if (TRACE_ON(MYDB_TRACE_PAGES))
+    {
+        char buf[MYDB_TRACE_KEYBUF];
+        TRACE(MYDB_TRACE_PAGES, "journal: LSN %llu %s %s", (unsigned long long)db->log_->lsn + 1U,
+              (type == LOG_INSERT)   ? "insert"
+              : (type == LOG_DELETE) ? "delete"
+                                     : "checkpoint",
+              key ? mydb_trace_key(key->data, key->size, buf) : "");
+    }
     if (mydb_log_write(db->log_, &record))
     {
         mydb_errno = MYDB_ERR_LOGWRT;
@@ -204,6 +214,9 @@ bool mydb_recover(IN sDB *db)
     //-----------------------------------
     /* pass 2: replay */
     db->replaying_ = true;
+    unsigned long replayed = 0UL;
+    TRACE(MYDB_TRACE_OPS, "recovery: the journal has %llu records, replay after the checkpoint at byte %lld",
+          (unsigned long long)lsn, (long long)replay_from);
 
     lseek(log->fd, replay_from, SEEK_SET);
     while ((record = mydb_log_record_next(log)))
@@ -211,9 +224,11 @@ bool mydb_recover(IN sDB *db)
         switch (record->type)
         {
         case LOG_INSERT: /* failed the first time (e.g. no free blocks) - fails again */
+            ++replayed;
             mydb_insert(db, &record->key, &record->val);
             break;
         case LOG_DELETE: /* the key may be absent already */
+            ++replayed;
             mydb_delete(db, &record->key);
             break;
         default:
@@ -222,6 +237,7 @@ bool mydb_recover(IN sDB *db)
         mydb_log_record_free(record);
     }
     db->replaying_ = false;
+    TRACE(MYDB_TRACE_OPS, "recovery: %lu operations replayed", replayed);
     //-----------------------------------
     /* write the recovered state and cut a possibly torn tail of the journal */
     return mydb_flush(db) != 0;

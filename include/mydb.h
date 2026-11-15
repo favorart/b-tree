@@ -153,6 +153,22 @@ int db_flush(sDB *db);
 long db_check(sDB *db);
 /** The largest key + value size for the page size of this database */
 size_t db_max_kv_size(const sDB *db);
+/** @name Trace levels for db_trace() and the MYDB_TRACE environment variable */
+/** @{ */
+#define MYDB_TRACE_OFF   0 /**< no trace */
+#define MYDB_TRACE_OPS   1 /**< API operations, open, recovery, checkpoints */
+#define MYDB_TRACE_TREE  2 /**< + the path through the tree, splits, key replacements, root changes */
+#define MYDB_TRACE_PAGES 3 /**< + page cache misses and evictions, page allocation, journal records */
+#define MYDB_TRACE_DUMP  4 /**< + the contents of every changed page */
+/** @} */
+/**
+ * Trace what the tree is doing, one line per action, to debug without a debugger.
+ * Without a call, dbcreate() / dbopen() read the environment: MYDB_TRACE=level,
+ * MYDB_TRACE_FILE=path (appended; stderr by default).
+ * @param level MYDB_TRACE_OFF .. MYDB_TRACE_DUMP
+ * @param out   the stream, NULL for stderr
+ */
+void db_trace(int level, FILE *out);
 //-------------------------------------------------------------------------------------------------------------
 /** Compare keys: memcmp() of the common prefix, then the length; returns -1, 0 or 1 */
 int key_compare(IN const sDBT *k, IN const sDBT *key);

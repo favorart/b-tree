@@ -231,6 +231,44 @@ and verifies the tree invariants with `db_check`:
 
 `MYDB_CRASH_ROUNDS=20 make test` runs more crash rounds.
 
+## Debugging with the trace
+
+Instead of a debugger, the library can print what the tree is doing, one line per action:
+
+```bash
+MYDB_TRACE=2 ./build/mydb_demo                          # to stderr
+MYDB_TRACE=4 MYDB_TRACE_FILE=trace.log ./your_program   # appended to a file
+```
+
+or `db_trace (MYDB_TRACE_TREE, stderr)` from the code. Levels:
+1 — API operations, open, recovery, checkpoints;
+2 — the path through the tree, splits, key replacements, root changes;
+3 — page cache misses and evictions, page allocation, journal records;
+4 — the contents of every changed page.
+Every line starts with the operation number, so `grep "mydb #91 "` shows all actions of one call
+(level 3, from `make test`):
+
+```text
+mydb #91 insert key="adbaccbdab" (10 B) value 2 B
+mydb #91     journal: LSN 69 insert "adbaccbdab"
+mydb #91     allocate page 1 (bitmap page 0, byte 0, bit 1), 2 pages used
+mydb #91     cache miss page 1: free slot 1 of 32768
+mydb #91     allocate page 2 (bitmap page 0, byte 0, bit 2), 3 pages used
+mydb #91     cache miss page 2: free slot 2 of 32768
+mydb #91   the root page 0 is full: new root page 1 above it, the tree grows
+mydb #91   split leaf page 0 -> new page 2, median "cadccbcccdcdbdd" up into page 1 (8 + 4 keys)
+mydb #91   page 1 inner, 1 keys, 436 B free -> child page 0
+mydb #91   page 0 leaf, 8 keys, 282 B free: insert or update
+mydb #91 insert done
+mydb #148 delete key="cdcccabb" (8 B)
+mydb #148     journal: LSN 126 delete "cdcccabb"
+mydb #148   page 1 inner: the key is here, look for a neighbour key
+mydb #148   page 1: replace "cdcccabb" by its predecessor "cccccdcaddbbabadaaa" from page 2
+mydb #148 delete done
+```
+
+With the trace off a trace point costs one integer comparison.
+
 ## Performance
 
 `make bench` (source: [`bench/bench_mydb.c`](bench/bench_mydb.c)) measures the throughput with 16-byte keys
