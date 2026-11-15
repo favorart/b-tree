@@ -500,6 +500,78 @@ static void test_open_bad_header(void **state)
     printf("bad headers: ok\n");
 }
 //-------------------------------------------------------------------------------------------------------------
+/* an insert that failed (the file was full) must not appear after a crash and recovery:
+ * the keys of before the checkpoint are deleted after it, so the replay has room for it */
+static void test_failed_insert_not_replayed(void **state)
+{
+    (void)state;
+    const char *name = "t_failed.db";
+    sDBC conf = tiny_cache_conf(); /* 128 cached pages, the file is bigger: evictions write the pages */
+    conf.db_size = 400U * 512U;
+    uchar_t v[40];
+    memset(v, 'v', sizeof(v));
+    sDB *db = dbcreate(name, &conf);
+    CHECK(db);
+    CHECK(db_close(db) == 0);
+
+    int fds[2];
+    CHECK(pipe(fds) == 0);
+    fflush(NULL);
+    pid_t pid = fork();
+    CHECK(pid >= 0);
+    if (pid == 0)
+    {
+        in_child = true;
+        if (!(db = dbopen(name)))
+            _exit(2);
+        uint32_t n = 0U;
+        for (; n < 1000U; ++n)
+            if (db_insert(db, &n, sizeof(n), v, sizeof(v)))
+                _exit(3);
+        if (db_flush(db)) /* a checkpoint: keys 0..999 are on disk, the journal starts after them */
+            _exit(4);
+        while (db_insert(db, &n, sizeof(n), v, sizeof(v)) == 0)
+            if (++n > 100000U)
+                _exit(5);
+        /* n did not fit; free the room of the keys of before the checkpoint, the cache writes the pages */
+        for (uint32_t k = 0U; k < 1000U; ++k)
+            if (db_delete(db, &k, sizeof(k)))
+                _exit(6);
+        for (uint32_t k = 1000U; k < n; ++k)
+        {
+            void *val;
+            size_t len;
+            if (db_select(db, &k, sizeof(k), &val, &len) == 0)
+                free(val);
+        }
+        if (write(fds[1], &n, sizeof(n)) != (ssize_t)sizeof(n))
+            _exit(7);
+        _exit(0); /* crash */
+    }
+    close(fds[1]);
+    uint32_t failed = 0U;
+    CHECK(read(fds[0], &failed, sizeof(failed)) == (ssize_t)sizeof(failed));
+    close(fds[0]);
+    int status = 0;
+    CHECK(waitpid(pid, &status, 0) == pid);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+
+    CHECK((db = dbopen(name)));
+    void *val = NULL;
+    size_t len = 0U;
+    CHECK(db_select(db, &failed, sizeof(failed), &val, &len) != 0); /* the failed insert stays failed */
+    for (uint32_t k = 0U; k < failed; ++k)
+    {
+        int found = db_select(db, &k, sizeof(k), &val, &len) == 0;
+        if (found)
+            free(val);
+        CHECK(found == (k >= 1000U));
+    }
+    CHECK(db_check(db) == (long)(failed - 1000U));
+    CHECK(db_close(db) == 0);
+    printf("failed insert after a crash: ok (%u keys fit)\n", failed);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
     (void)state;
@@ -544,6 +616,7 @@ int main(void)
         cmocka_unit_test(test_full),
         cmocka_unit_test(test_full_delete_some),
         cmocka_unit_test(test_open_bad_header),
+        cmocka_unit_test(test_failed_insert_not_replayed),
         cmocka_unit_test(test_crash_recovery),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

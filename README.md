@@ -204,7 +204,9 @@ into the LRU list. Modified pages are only marked dirty and are written on evict
 
 ### Journal and recovery
 
-Each `insert` / `delete` appends a record to `<file>.log` *before* changing the tree:
+Each `insert` / `delete` appends a record to `<file>.log` *before* changing the tree;
+a failed operation is followed by an ABORT record, and recovery does not repeat it
+(the state it would be replayed on may have room for it after later deletes):
 
 ```text
 | type u32 | key size u32 | value size u32 | LSN u64 | key | value | FNV-1a checksum u32 |
