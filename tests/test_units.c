@@ -742,6 +742,52 @@ static void test_rebalance(void **state)
     }
     fclose(f);
 }
+/* the trace names the page the cache evicts: it is one of the pages the cache has loaded */
+static void test_trace_evict(void **state)
+{
+    (void)state;
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    db_trace(MYDB_TRACE_PAGES, f);
+    sDB *db = small_db("u_evict.db", 1U << 20); /* 128 cached pages */
+    CHECK(db != NULL);
+    char key[16];
+    for (int i = 0; i < 3000; ++i)
+    {
+        snprintf(key, sizeof(key), "key%05d", (i * 7919) % 3000);
+        CHECK(db_insert(db, key, strlen(key), "value", 5U) == 0);
+    }
+    db_close(db);
+    db_trace(MYDB_TRACE_OFF, NULL);
+
+    static bool cached[2048];
+    memset(cached, 0, sizeof(cached));
+    char line[256];
+    int evictions = 0;
+    rewind(f);
+    while (fgets(line, sizeof(line), f))
+    {
+        const char *miss = strstr(line, "cache miss page ");
+        if (!miss)
+            continue;
+        unsigned page = 0U, evicted = 0U;
+        CHECK(sscanf(miss, "cache miss page %u", &page) == 1 && page < 2048U);
+        const char *ev = strstr(line, ": evict page ");
+        if (ev)
+        {
+            CHECK(sscanf(ev, ": evict page %u", &evicted) == 1 && evicted < 2048U);
+            CHECK(cached[evicted]); /* the evicted page was in the cache */
+            cached[evicted] = false;
+            ++evictions;
+        }
+        cached[page] = true;
+    }
+    CHECK(evictions > 100);
+    fclose(f);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_trace(void **state)
 {
     (void)state;
@@ -825,6 +871,7 @@ int main(void)
         cmocka_unit_test(test_inner_node_cases),
         cmocka_unit_test(test_rebalance),
         cmocka_unit_test(test_trace),
+        cmocka_unit_test(test_trace_evict),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
 }
