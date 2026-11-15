@@ -1,32 +1,44 @@
 # mydb: B-tree key-value storage
 #
-#   make        - libmydb.a and the demo mydb_demo
+#   make        - build/libmydb.a and build/mydb_demo
+#   make format - clang-format the sources
 #   make clean
 
 CC      ?= cc
 CFLAGS  ?= -O2 -g
-override CFLAGS += -std=c99 -Wall -Wextra
+override CFLAGS += -std=c99 -Wall -Wextra -Iinclude -Isrc
 LDFLAGS ?=
 
-SOURCES     := $(wildcard *.c)
-LIB_SOURCES := $(filter-out mydb_main.c, $(SOURCES))
-LIB_OBJECTS := $(LIB_SOURCES:.c=.o)
-HEADERS     := $(wildcard *.h)
+BUILD   := build
+SOURCES := $(wildcard src/*.c)
+OBJECTS := $(SOURCES:src/%.c=$(BUILD)/%.o)
+HEADERS := $(wildcard include/*.h src/*.h)
+LIB     := $(BUILD)/libmydb.a
 
-.PHONY: all lib clean
+.PHONY: all lib demo format clean
 
-all: lib mydb_demo
+all: lib demo
 
-lib: libmydb.a
+lib: $(LIB)
+demo: $(BUILD)/mydb_demo
 
-libmydb.a: $(LIB_OBJECTS)
+$(LIB): $(OBJECTS)
 	$(AR) rcs $@ $^
 
-%.o: %.c $(HEADERS)
+$(BUILD)/%.o: src/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-mydb_demo: mydb_main.o libmydb.a
+$(BUILD)/%.o: examples/%.c $(HEADERS) | $(BUILD)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/mydb_demo: $(BUILD)/demo.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
 
+$(BUILD):
+	mkdir -p $@
+
+format:
+	clang-format -i include/*.h src/*.c src/*.h examples/*.c
+
 clean:
-	rm -f *.o libmydb.a mydb_demo
+	rm -rf $(BUILD)

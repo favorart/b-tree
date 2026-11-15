@@ -1,56 +1,10 @@
-# Compiled Object files
-*.slo
-*.lo
-*.o
-*.obj
+# build output: library, demo, tests, their database files
+/build/
 
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
-*.out
-*.app
-*.tlog
-btr.cpp
-*.filters
-*.user
-*.cache
-back.c
-*.pdb
-tr.cpp
-*.idb
-*.log
-*.unsuccessfulbuild
-*.lastbuildstate
-VisualGDBCache/libbtree-Debug/SourceCache.dat
-libbtree-Release.vgdbsettings
-libbtree-Debug.vgdbsettings
-release.mak
-gcc_Release.h
-gcc_Debug.h
-debug.mak
-debug.mak.old
-libbtree.cpp
-libbtree.vcxproj
-libbtree.h
-
-# build output
-mydb_demo
+# databases and journals made by the demo
 *.db
 *.db.log
+
+# build output of old layouts
+*.o
+*.a
