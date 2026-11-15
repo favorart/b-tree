@@ -5,18 +5,28 @@
 #include <signal.h>
 #include <sys/wait.h>
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <setjmp.h>
+#include <cmocka.h>
+
 #include "mydb_common.h"
 #include "mydb.h"
 
 //-------------------------------------------------------------------------------------------------------------
+/* cmocka in the test process; a child process of a crash test exits with 3 instead */
+static bool in_child;
 #define CHECK(cond)                                                                                          \
     do                                                                                                       \
     {                                                                                                        \
-        if (!(cond))                                                                                         \
+        if (in_child)                                                                                        \
         {                                                                                                    \
-            fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond);                         \
-            exit(EXIT_FAILURE);                                                                              \
+            if (!(cond))                                                                                     \
+                _exit(3);                                                                                    \
         }                                                                                                    \
+        else                                                                                                 \
+            assert_true(cond);                                                                               \
     } while (0)
 
 static uint64_t rng_state;
@@ -114,7 +124,7 @@ static void model_free(sModel *m)
     memset(m, 0, sizeof(*m));
 }
 //-------------------------------------------------------------------------------------------------------------
-static void expect_value(sDB *db, const uchar_t *k, size_t klen, const uchar_t *v, size_t vlen)
+static void check_value(sDB *db, const uchar_t *k, size_t klen, const uchar_t *v, size_t vlen)
 {
     void *got = NULL;
     size_t len = 0U;
@@ -134,7 +144,7 @@ static void verify_all(sDB *db, sModel *m)
 {
     CHECK(db_check(db) == (long)m->n);
     for (size_t i = 0U; i < m->n; ++i)
-        expect_value(db, m->items[i].k, m->items[i].klen, m->items[i].v, m->items[i].vlen);
+        check_value(db, m->items[i].k, m->items[i].klen, m->items[i].v, m->items[i].vlen);
 }
 //-------------------------------------------------------------------------------------------------------------
 /* A random operation, applied both to the db (if any) and to the model */
@@ -190,18 +200,19 @@ static sDBC tiny_cache_conf(void)
     return conf;
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_basic(void)
+static void test_basic(void **state)
 {
+    (void)state;
     sDBC conf = small_conf();
     sDB *db = dbcreate("t_basic.db", &conf);
     CHECK(db);
 
     CHECK(db_insert(db, "key", 3U, "value", 5U) == 0);
-    expect_value(db, (const uchar_t *)"key", 3U, (const uchar_t *)"value", 5U);
+    check_value(db, (const uchar_t *)"key", 3U, (const uchar_t *)"value", 5U);
     CHECK(db_insert(db, "key", 3U, "longer value", 12U) == 0);
-    expect_value(db, (const uchar_t *)"key", 3U, (const uchar_t *)"longer value", 12U);
+    check_value(db, (const uchar_t *)"key", 3U, (const uchar_t *)"longer value", 12U);
     CHECK(db_insert(db, "k", 1U, "", 0U) == 0);
-    expect_value(db, (const uchar_t *)"k", 1U, (const uchar_t *)"", 0U);
+    check_value(db, (const uchar_t *)"k", 1U, (const uchar_t *)"", 0U);
     expect_absent(db, (const uchar_t *)"ke", 2U);
     expect_absent(db, (const uchar_t *)"key2", 4U);
 
@@ -255,8 +266,9 @@ static void test_random(const char *name, sDBC conf, size_t n_ops, size_t reopen
 }
 //-------------------------------------------------------------------------------------------------------------
 /* insert many keys, delete all of them, insert again: blocks are reused */
-static void test_delete_all(void)
+static void test_delete_all(void **state)
 {
+    (void)state;
     sDBC conf = tiny_cache_conf();
     sDB *db = dbcreate("t_delall.db", &conf);
     CHECK(db);
@@ -297,8 +309,9 @@ static void test_delete_all(void)
 }
 //-------------------------------------------------------------------------------------------------------------
 /* fill the file completely: inserts fail cleanly, the data stays */
-static void test_full(void)
+static void test_full(void **state)
 {
+    (void)state;
     sDBC conf = small_conf();
     conf.db_size = 64U * 1024U;
     sDB *db = dbcreate("t_full.db", &conf);
@@ -346,6 +359,7 @@ static void test_crash(int round, bool torn_tail)
     CHECK(pid >= 0);
     if (pid == 0)
     {
+        in_child = true;
         sModel cm = {0};
         rng_state = seed;
         if (!(db = dbopen(name)))
@@ -389,25 +403,50 @@ static void test_crash(int round, bool torn_tail)
     model_free(&m);
 }
 //-------------------------------------------------------------------------------------------------------------
-int main(void)
+static void test_random_default(void **state)
 {
-    rng_state = 0x0123456789ABCDEFULL;
-    test_basic();
+    (void)state;
     test_random("t_rand_default.db", small_conf(), 30000U, 0U);
+}
+static void test_random_tiny_cache(void **state)
+{
+    (void)state;
     test_random("t_rand_tiny.db", tiny_cache_conf(), 30000U, 0U);
+}
+static void test_random_reopen(void **state)
+{
+    (void)state;
     test_random("t_rand_reopen.db", tiny_cache_conf(), 20000U, 2500U);
-    {
-        sDBC big = {0}; /* default 4 KB pages */
-        big.db_size = 32U * 1024U * 1024U;
-        test_random("t_rand_4k.db", big, 20000U, 7000U);
-    }
-    test_delete_all();
-    test_full();
+}
+static void test_random_4k_pages(void **state)
+{
+    (void)state;
+    sDBC big = {0}; /* default 4 KB pages */
+    big.db_size = 32U * 1024U * 1024U;
+    test_random("t_rand_4k.db", big, 20000U, 7000U);
+}
+static void test_crash_recovery(void **state)
+{
+    (void)state;
     /* MYDB_CRASH_ROUNDS=N for a longer run */
     int rounds = getenv("MYDB_CRASH_ROUNDS") ? atoi(getenv("MYDB_CRASH_ROUNDS")) : 4;
     for (int round = 0; round < rounds; ++round)
         test_crash(round, round % 4 == 3);
-    printf("all tests passed\n");
-    return EXIT_SUCCESS;
+}
+//-------------------------------------------------------------------------------------------------------------
+int main(void)
+{
+    rng_state = 0x0123456789ABCDEFULL;
+    const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_basic),
+        cmocka_unit_test(test_random_default),
+        cmocka_unit_test(test_random_tiny_cache),
+        cmocka_unit_test(test_random_reopen),
+        cmocka_unit_test(test_random_4k_pages),
+        cmocka_unit_test(test_delete_all),
+        cmocka_unit_test(test_full),
+        cmocka_unit_test(test_crash_recovery),
+    };
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }
 //-------------------------------------------------------------------------------------------------------------

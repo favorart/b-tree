@@ -5,6 +5,12 @@
  */
 #define _XOPEN_SOURCE 700
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <setjmp.h>
+#include <cmocka.h>
+
 #include "mydb_common.h"
 #include "mydb.h"
 #include "mydb_low.h"
@@ -18,25 +24,8 @@
 #include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
-static int n_checks, n_failed;
-#define CHECK(cond)                                                                                          \
-    do                                                                                                       \
-    {                                                                                                        \
-        ++n_checks;                                                                                          \
-        if (!(cond))                                                                                         \
-        {                                                                                                    \
-            ++n_failed;                                                                                      \
-            fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond);                         \
-        }                                                                                                    \
-    } while (0)
-
-#define RUN(test)                                                                                            \
-    do                                                                                                       \
-    {                                                                                                        \
-        int before = n_failed;                                                                               \
-        test();                                                                                              \
-        printf("%-28s %s\n", #test, (n_failed == before) ? "ok" : "FAILED");                                 \
-    } while (0)
+/* cmocka: a failed check stops the current test and reports the expression and the line */
+#define CHECK(cond) assert_true(cond)
 
 static sDBT S(const char *s)
 {
@@ -106,8 +95,9 @@ static uint32_t used_bytes(sBlock *b)
     return (uint32_t)(b->free_ - b->data_);
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_key_compare(void)
+static void test_key_compare(void **state)
 {
+    (void)state;
     sDBT a = S("abc"), ab = S("ab"), abd = S("abd"), b = S("b");
     CHECK(key_compare(&a, &a) == 0);
     CHECK(key_compare(&ab, &a) < 0 && key_compare(&a, &ab) > 0); /* prefix is smaller */
@@ -120,8 +110,9 @@ static void test_key_compare(void)
     CHECK(key_compare(&khi, &klo) == 1 && key_compare(&klo, &khi) == -1);
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_page_insert_iterate(void)
+static void test_page_insert_iterate(void **state)
 {
+    (void)state;
     sFakeBlock fb;
     sBlock *b = fake_block(&fb, Leaf, 0);
     sDBT v = S("v");
@@ -144,8 +135,9 @@ static void test_page_insert_iterate(void)
     sDBT iter = {0}, *k = block_key_next(b, &iter, &vsz);
     CHECK(k && k->size == 1U && vsz == 1U);
 }
-static void test_page_update(void)
+static void test_page_update(void **state)
 {
+    (void)state;
     sFakeBlock fb;
     sBlock *b = fake_block(&fb, Leaf, 0);
     sDBT k1 = S("k1"), k2 = S("k2"), k3 = S("k3"), small = S("x"), big = S("a much longer value");
@@ -162,8 +154,9 @@ static void test_page_update(void)
     CHECK(block_insert(b, &k2, &small, NULL, MYDB_INVALIDPTR) == DONE);
     CHECK(used_bytes(b) == used && value_is(b, "k2", "x") && value_is(b, "k3", "x"));
 }
-static void test_page_full(void)
+static void test_page_full(void **state)
 {
+    (void)state;
     sFakeBlock fb;
     sBlock *b = fake_block(&fb, Leaf, 0);
     char key[16];
@@ -181,8 +174,9 @@ static void test_page_full(void)
     CHECK(*block_nkvs(b) == (uint32_t)n); /* the failed insert changed nothing */
     CHECK(block_isfull(b));
 }
-static void test_page_pointers(void)
+static void test_page_pointers(void **state)
 {
+    (void)state;
     sFakeBlock fb;
     sBlock *b = fake_block(&fb, Pass, 0);
     sDBT a = S("a"), c = S("c"), e = S("e"), v = S("");
@@ -219,8 +213,9 @@ static void test_page_pointers(void)
     CHECK(block_delete(b, &a, true) == FAIL); /* absent */
     CHECK(b->head_->free_size_ + used_bytes(b) == PAGE - sizeof(sDBHB));
 }
-static void test_page_change_no_room(void)
+static void test_page_change_no_room(void **state)
 {
+    (void)state;
     sFakeBlock fb;
     sBlock *b = fake_block(&fb, Leaf, 0);
     uchar_t val[200] = {0};
@@ -233,8 +228,9 @@ static void test_page_change_no_room(void)
     CHECK(value_is(b, "k2", "s"));
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_split(void)
+static void test_split(void **state)
 {
+    (void)state;
     sFakeBlock fx, fy, fz;
     sBlock *x = fake_block(&fx, Pass, 1), *y = fake_block(&fy, Leaf, 2), *z = fake_block(&fz, Leaf, 3);
     x->head_->pointer_0_ = 2;
@@ -268,8 +264,9 @@ static void test_split(void)
 }
 //-------------------------------------------------------------------------------------------------------------
 /* sequential inserts: a key beyond the edge of the full block splits it at that edge */
-static void test_split_at_edge(void)
+static void test_split_at_edge(void **state)
 {
+    (void)state;
     for (int ascending = 0; ascending < 2; ++ascending)
     {
         sFakeBlock fx, fy, fz;
@@ -311,8 +308,9 @@ static sDB *small_db(const char *name, size_t db_size)
     sDBC conf = {db_size, PAGE, 1}; /* the smallest cache */
     return dbcreate(name, &conf);
 }
-static void test_bitmap(void)
+static void test_bitmap(void **state)
 {
+    (void)state;
     sDB *db = small_db("u_bitmap.db", 256U * 1024U);
     CHECK(db != NULL);
     if (!db)
@@ -352,8 +350,9 @@ static void test_bitmap(void)
 }
 //-------------------------------------------------------------------------------------------------------------
 /* The cache against a model LRU list */
-static void test_cache_lru(void)
+static void test_cache_lru(void **state)
 {
+    (void)state;
     sDB *db = small_db("u_cache.db", 2U * 1024U * 1024U);
     CHECK(db != NULL);
     if (!db)
@@ -416,8 +415,9 @@ static void test_cache_lru(void)
     db_close(db);
 }
 /* dirty pages pushed out of the cache are read back intact */
-static void test_cache_writeback(void)
+static void test_cache_writeback(void **state)
 {
+    (void)state;
     sDB *db = small_db("u_wb.db", 2U * 1024U * 1024U);
     CHECK(db != NULL);
     if (!db)
@@ -457,8 +457,9 @@ static void test_cache_writeback(void)
     db_close(db);
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_log_records(void)
+static void test_log_records(void **state)
 {
+    (void)state;
     sLog *log = mydb_log_open("u_log.db", true);
     CHECK(log != NULL);
     if (!log)
@@ -504,8 +505,9 @@ static void test_log_records(void)
     free(log->filename);
     free(log);
 }
-static void test_log_replay(void)
+static void test_log_replay(void **state)
 {
+    (void)state;
     /* operations after the last checkpoint are replayed on open */
     sDB *db = small_db("u_replay.db", 1U * 1024U * 1024U);
     CHECK(db != NULL);
@@ -534,9 +536,10 @@ static void test_log_replay(void)
     db_close(db);
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_config(void)
+static void test_config(void **state)
 {
-    CHECK(db_version() && *db_version()); /* set from the git tag by the Makefile */
+    (void)state;
+    CHECK(db_version() && *db_version());     /* set from the git tag by the Makefile */
     sDB *db = dbcreate("u_default.db", NULL); /* a sparse 512 MB file */
     CHECK(db != NULL);
     if (db)
@@ -564,8 +567,9 @@ static void test_config(void)
     CHECK(dbcreate(NULL, NULL) == NULL && dbopen(NULL) == NULL);
     CHECK(db_close(NULL) == 0);
 }
-static void test_errors(void)
+static void test_errors(void **state)
 {
+    (void)state;
     for (int e = MYDB_ERR_FPARAM; e <= MYDB_ERR_LOGWRT; ++e)
     {
         mydb_errno = (e_mydb_err)e;
@@ -588,8 +592,9 @@ static void test_errors(void)
     db_close(db);
 }
 //-------------------------------------------------------------------------------------------------------------
-static void test_check_detects_corruption(void)
+static void test_check_detects_corruption(void **state)
 {
+    (void)state;
     sDB *db = small_db("u_corrupt.db", 1U * 1024U * 1024U);
     CHECK(db != NULL);
     if (!db)
@@ -622,8 +627,9 @@ static int tree_height(sDB *db)
     }
     return h;
 }
-static void test_inner_node_cases(void)
+static void test_inner_node_cases(void **state)
 {
+    (void)state;
     sDB *db = small_db("u_inner.db", 4U * 1024U * 1024U);
     CHECK(db != NULL);
     if (!db)
@@ -669,8 +675,9 @@ static void test_inner_node_cases(void)
 //-------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------
 /* deletion merges and borrows: no empty pages, every page but the root keeps a quarter */
-static void test_rebalance(void)
+static void test_rebalance(void **state)
 {
+    (void)state;
     FILE *f = tmpfile();
     CHECK(f != NULL);
     if (!f)
@@ -734,8 +741,9 @@ static void test_rebalance(void)
     }
     fclose(f);
 }
-static void test_trace(void)
+static void test_trace(void **state)
 {
+    (void)state;
     char buf[MYDB_TRACE_KEYBUF];
     CHECK(!strcmp(mydb_trace_key("kiwi", 4U, buf), "\"kiwi\""));
     CHECK(!strcmp(mydb_trace_key("\x01\xff", 2U, buf), "0x01ff"));
@@ -796,26 +804,27 @@ static void test_trace(void)
 }
 int main(void)
 {
-    RUN(test_key_compare);
-    RUN(test_page_insert_iterate);
-    RUN(test_page_update);
-    RUN(test_page_full);
-    RUN(test_page_pointers);
-    RUN(test_page_change_no_room);
-    RUN(test_split);
-    RUN(test_split_at_edge);
-    RUN(test_bitmap);
-    RUN(test_cache_lru);
-    RUN(test_cache_writeback);
-    RUN(test_log_records);
-    RUN(test_log_replay);
-    RUN(test_config);
-    RUN(test_errors);
-    RUN(test_check_detects_corruption);
-    RUN(test_inner_node_cases);
-    RUN(test_rebalance);
-    RUN(test_trace);
-    printf("%d checks, %d failed\n", n_checks, n_failed);
-    return n_failed ? EXIT_FAILURE : EXIT_SUCCESS;
+    const struct CMUnitTest tests[] = {
+        cmocka_unit_test(test_key_compare),
+        cmocka_unit_test(test_page_insert_iterate),
+        cmocka_unit_test(test_page_update),
+        cmocka_unit_test(test_page_full),
+        cmocka_unit_test(test_page_pointers),
+        cmocka_unit_test(test_page_change_no_room),
+        cmocka_unit_test(test_split),
+        cmocka_unit_test(test_split_at_edge),
+        cmocka_unit_test(test_bitmap),
+        cmocka_unit_test(test_cache_lru),
+        cmocka_unit_test(test_cache_writeback),
+        cmocka_unit_test(test_log_records),
+        cmocka_unit_test(test_log_replay),
+        cmocka_unit_test(test_config),
+        cmocka_unit_test(test_errors),
+        cmocka_unit_test(test_check_detects_corruption),
+        cmocka_unit_test(test_inner_node_cases),
+        cmocka_unit_test(test_rebalance),
+        cmocka_unit_test(test_trace),
+    };
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }
 //-------------------------------------------------------------------------------------------------------------

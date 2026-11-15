@@ -29,7 +29,7 @@ the bugs found by review and sanitizers are fixed, and the unfinished parts
 ```bash
 make                # build/libmydb.a and build/mydb_demo
 ./build/mydb_demo   # creates demo.db and demo.db.log
-make test           # unit and integration tests
+make test           # unit, integration and worst-case tests (cmocka: apt install libcmocka-dev, brew install cmocka)
 make SAN=1 test     # the same with AddressSanitizer + UndefinedBehaviorSanitizer
 ```
 
@@ -234,6 +234,7 @@ A record torn by a crash is detected by its checksum and ignored.
 
 ## Tests
 
+The tests use [cmocka](https://cmocka.org) from the system packages.
 [`tests/test_mydb.c`](tests/test_mydb.c) checks every operation against a sorted-array model
 and verifies the tree invariants with `db_check`:
 
