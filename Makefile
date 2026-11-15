@@ -12,9 +12,12 @@ CFLAGS  ?= -O2 -g
 override CFLAGS += -std=c99 -Wall -Wextra -Wpedantic -D_XOPEN_SOURCE=700 -D_FILE_OFFSET_BITS=64 -Iinclude -Isrc
 LDFLAGS ?=
 
-# the version comes from the git tag: 0.0.5, or 0.0.5-3-gabc1234 three commits after it
-VERSION ?= $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null | sed 's/^v//')
-override CFLAGS += -DMYDB_LIB_VERSION=\"$(or $(VERSION),unknown)\"
+# the version comes from the git tag: 0.0.5, or 0.0.5-3-gabc1234 three commits after it;
+# computed once per make run, and mydb.o is rebuilt when it changes (build/version)
+ifndef VERSION
+VERSION := $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null | sed 's/^v//')
+endif
+VERSION := $(or $(VERSION),unknown)
 
 ifeq ($(SAN),1)
   override CFLAGS  += -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all
@@ -43,6 +46,12 @@ $(LIB): $(OBJECTS)
 
 $(BUILD)/%.o: src/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/version: FORCE | $(BUILD)
+	@echo '$(VERSION)' | cmp -s - $@ || echo '$(VERSION)' > $@
+$(BUILD)/mydb.o: $(BUILD)/version
+$(BUILD)/mydb.o: override CFLAGS += -DMYDB_LIB_VERSION=\"$(VERSION)\"
+.PHONY: FORCE
 
 $(BUILD)/%.o: examples/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
