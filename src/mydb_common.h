@@ -43,7 +43,7 @@ static inline void mydb_wr32(void *p, uint32_t v)
 }
 //-------------------------------------------------------------------------------------------------------------
 /* the implementation part of the public types (include/mydb.h) */
-#define MYDB_BITSINBYTE 8U
+#define MYDB_BITSINBYTE    8U
 #define MYDB_MAX_PAGE_SIZE (1U << 24) /* 16 MB */
 /*  On-disk format: "MYDB" and the version */
 #define MYDB_MAGIC   0x4244594DU
@@ -83,6 +83,7 @@ typedef struct Logging sLog;
     sLog *log_;                                                                                              \
     bool replaying_; /* recovery in progress: do not journal */                                              \
     sTechB *techb_array_;                                                                                    \
-    uint32_t techb_last0_;
+    uint32_t techb_last0_;                                                                                   \
+    uint32_t height_; /* levels of the tree: the pages a split chain may need */
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_COMMON_H_

@@ -361,6 +361,8 @@ Each cell: this tree / the rebuilt one. What it shows:
   journal records are written without `fsync` (only checkpoints are synced),
   and a crash in the middle of writing the pages can leave the file inconsistent (no double-write buffer).
 - Key + value size is limited by the page size (1/8 of a page); empty keys are not allowed.
+- The last `2 * (height + 2)` free pages are kept for deletes: an insert fails a bit before the file is full,
+  so a delete always has the pages for its splits and can free space.
 - No range scans or iterators; the file does not shrink after deletes (freed pages are reused).
 - Integers are stored in the native byte order (the files are not portable between endiannesses).
 - Fatal I/O errors inside the cache terminate the process (`exit`), as in the original code.

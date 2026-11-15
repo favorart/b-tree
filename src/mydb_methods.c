@@ -68,6 +68,24 @@ static sBlock *mydb_root(IN sDB *db)
 {
     return (db->root_ = block_create(db, db->head_.offset2root_));
 }
+/* levels of the tree: the leftmost path down from the root, 0 on error */
+static uint32_t mydb_height(IN sDB *db)
+{
+    uint32_t height = 1U;
+    for (sBlock *b = mydb_root(db); b && *block_type(b) == Pass; ++height)
+        if (height > 64U || !(b = block_create(db, b->head_->pointer_0_)))
+            return 0U;
+    return height;
+}
+/*  An insert or a delete allocates at most one page per level and two for a new root.
+ *  An insert leaves this many free pages for a delete: then a delete on a full file
+ *  always has the pages for its splits and can free the space.
+ */
+static bool mydb_room_for_insert(IN sDB *db)
+{
+    uint32_t free_pages = db->head_.block_count_ - db->head_.nodes_count_;
+    return free_pages >= 2U * (db->height_ + 2U);
+}
 /* keep the root non-full: split it and grow the tree by one level */
 static int mydb_split_root(IN sDB *db, IN const sDBT *key)
 {
@@ -76,6 +94,12 @@ static int mydb_split_root(IN sDB *db, IN const sDBT *key)
         return -1;
     if (!block_isfull(rb))
         return 0;
+    if (!key && db->head_.block_count_ - db->head_.nodes_count_ < 2U)
+    { /* a delete: no two free pages for a new root, go on (see split_if_full) */
+        TRACE(MYDB_TRACE_TREE, "the root page %u is full, no free pages to split it: go on",
+              (unsigned)rb->offset_);
+        return 0;
+    }
     //-----------------------------------------
     uint32_t old_root = rb->offset_;
     /* alloc new free blocks */
@@ -90,6 +114,7 @@ static int mydb_split_root(IN sDB *db, IN const sDBT *key)
 
     db->root_ = new_root;
     db->head_.offset2root_ = new_root->offset_;
+    ++db->height_;
     TRACE(MYDB_TRACE_TREE, "the root page %u is full: new root page %u above it, the tree grows",
           (unsigned)old_root, (unsigned)new_root->offset_);
     //-----------------------------------------
@@ -175,6 +200,7 @@ sDB *mydb_create(IN const char *file, IN const sDBC *conf)
     if (!db->root_)
         goto CREAT_FAIL;
     db->head_.offset2root_ = db->root_->offset_;
+    db->height_ = 1U;
     //-----------------------------------------
     /* Write ahead log */
     if (!(db->log_ = mydb_log_open(file, true)) || mydb_flush(db))
@@ -229,7 +255,7 @@ sDB *mydb_open(IN const char *file)
         goto OPEN_FAIL;
     }
     //-----------------------------------------
-    if (!mydb_load(db, error_prefix) || !mydb_root(db))
+    if (!mydb_load(db, error_prefix) || !mydb_root(db) || !(db->height_ = mydb_height(db)))
         goto OPEN_FAIL;
     TRACE(MYDB_TRACE_OPS, "open '%s': page %u B, %u of %u data pages used, root page %u", file,
           (unsigned)db->head_.page_size_, (unsigned)db->head_.nodes_count_, (unsigned)db->head_.block_count_,
@@ -326,6 +352,7 @@ int mydb_delete(IN sDB *db, IN const sDBT *key)
         TRACE(MYDB_TRACE_TREE, "the root page %u has no keys: page %u is the root now, the tree is lower",
               (unsigned)rb->offset_, (unsigned)rb->head_->pointer_0_);
         db->head_.offset2root_ = rb->head_->pointer_0_;
+        --db->height_;
         block_release(db, rb->offset_);
     }
     TRACE(MYDB_TRACE_OPS, "delete %s", rc ? "failed: no such key" : "done");
@@ -341,6 +368,12 @@ int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     if (mydb_logging(db, LOG_INSERT, key, data))
         return -1;
     //-----------------------------------------
+    if (!mydb_room_for_insert(db))
+    {
+        mydb_errno = MYDB_ERR_NFREEB; /* the rest is kept for deletes */
+        TRACE(MYDB_TRACE_OPS, "insert failed: the free pages are kept for deletes");
+        return -1;
+    }
     if (mydb_split_root(db, key) || !mydb_root(db))
         return -1;
     int rc = (DONE == block_add_nonfull(db->root_, key, data)) ? 0 : -1;
