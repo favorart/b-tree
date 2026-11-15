@@ -137,7 +137,7 @@ bool mydb_cache_init(IN sDB *db)
         //-----------------------------------------------
         Cch->blocks_ = (sBlock *)calloc(Cch->all_pgs, sizeof(*Cch->blocks_));
         Cch->blHash_ = (sCchHL *)calloc(Cch->szHash_, sizeof(*Cch->blHash_));
-        Cch->memory_ = (uchar_t *)malloc(Cch->all_pgs * Cch->sz_pg * sizeof(uchar_t));
+        Cch->memory_ = (uchar_t *)malloc((size_t)Cch->all_pgs * Cch->sz_pg); /* size_t: no 32-bit overflow */
 
         if (!Cch->blocks_ || !Cch->memory_ || !Cch->blHash_)
         {

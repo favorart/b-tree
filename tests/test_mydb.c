@@ -402,6 +402,65 @@ static void test_crash(int round, bool torn_tail)
            m.n);
     model_free(&m);
 }
+/* a header that mydb_create () could not have made is rejected without touching the file */
+static void test_open_bad_header(void **state)
+{
+    (void)state;
+    sDBC conf = small_conf();
+    sDB *db = dbcreate("t_header.db", &conf);
+    CHECK(db);
+    CHECK(db_close(db) == 0);
+    sDBFH good;
+    FILE *f = fopen("t_header.db", "rb");
+    CHECK(f && fread(&good, sizeof(good), 1U, f) == 1U);
+    fclose(f);
+
+    for (int c = 0; c < 9; ++c)
+    {
+        sDBFH h = good;
+        long truncate_to = -1;
+        switch (c)
+        {
+        case 0:
+            h.page_size_ = 1U << 25;
+            h.cache_size_ = 0U;
+            h.techb_count_ = 0U;
+            h.block_count_ = 1U;
+            break;
+        case 1:
+            h.page_size_ = 256U;
+            break;
+        case 2:
+            h.techb_count_ = 0U;
+            break;
+        case 3:
+            h.block_count_ += 100U;
+            break;
+        case 4:
+            h.nodes_count_ = h.block_count_ + 1U;
+            break;
+        case 5:
+            h.offset2root_ = h.block_count_;
+            break;
+        case 6:
+            h.db_size_ = 100U;
+            break;
+        case 7:
+            h.version_ = MYDB_VERSION + 1U;
+            break;
+        default:
+            truncate_to = (long)sizeof(h) + (long)h.page_size_;
+            break; /* a truncated file */
+        }
+        f = fopen("t_header.db", "r+b");
+        CHECK(f && fwrite(&h, sizeof(h), 1U, f) == 1U);
+        fclose(f);
+        if (truncate_to >= 0)
+            CHECK(truncate("t_header.db", truncate_to) == 0);
+        CHECK(dbopen("t_header.db") == NULL);
+    }
+    printf("bad headers: ok\n");
+}
 //-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
@@ -445,6 +504,7 @@ int main(void)
         cmocka_unit_test(test_random_4k_pages),
         cmocka_unit_test(test_delete_all),
         cmocka_unit_test(test_full),
+        cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_crash_recovery),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);
