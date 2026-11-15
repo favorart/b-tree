@@ -12,7 +12,7 @@
 #define _XOPEN_SOURCE 700
 #include <time.h>
 
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb.h"
 
 //-------------------------------------------------------------------------------------------------------------

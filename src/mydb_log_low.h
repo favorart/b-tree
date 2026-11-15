@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb_log.h"
 
 #ifndef _MYDB_LOG_LOW_H_
@@ -8,7 +8,7 @@
 struct Logging
 {
     char *filename;
-    HFILE fd;
+    int fd;
     //------------------
     uint64_t lsn;
 };

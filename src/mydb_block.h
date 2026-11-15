@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "mydb_common.h"
 #include "mydb_error.h"
 #include "mydb.h"
 
@@ -11,13 +11,12 @@
 #define MYDB_ENTRY_OVERHEAD (3U * sizeof(uint32_t))
 //-------------------------------------------------------------------------------------------------------------
 /* DB Node type */
-typedef enum DBNT eDBNT;
-enum DBNT // : uchar_t
+typedef enum DBNT // : uchar_t
 {
     Free = 0,
     Pass = 1,
     Leaf = 2 /* , Root=4 */
-};
+} eDBNT;
 //-------------------------------------------------------------------------------------------------------------
 /* Memory Block */
 typedef struct DBHB sDBHB;
