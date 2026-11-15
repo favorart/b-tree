@@ -2,6 +2,7 @@
 #include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /*  DELETION
@@ -212,6 +213,13 @@ static eDBState replace_by_neighbour(IN sDB *db, IN uint32_t xoff, IN const sDBT
    *       /   \   =>       /   \
    *      y     z       k<-y     z
    */
+    if (TRACE_ON(MYDB_TRACE_TREE))
+    {
+        char b1[MYDB_TRACE_KEYBUF], b2[MYDB_TRACE_KEYBUF];
+        TRACE(MYDB_TRACE_TREE, "page %u: replace %s by its %s %s from page %u", (unsigned)xoff,
+              mydb_trace_key(key->data, key->size, b1), by_successor ? "successor" : "predecessor",
+              mydb_trace_key(nkey.data, nkey.size, b2), (unsigned)holder);
+    }
     eDBState result = FAIL;
     if (DONE == block_change(x, &nkey, &nval, k, MYDB_INVALIDPTR) &&
         DONE == block_delete(h, &nkey, by_successor))
@@ -248,6 +256,8 @@ int block_delete_deep(IN sBlock *block, IN const sDBT *key)
         //-----------------------------------------
         if (*block_type(x) == Leaf)
         {
+            TRACE(MYDB_TRACE_TREE, "page %u leaf, %u keys: %s", (unsigned)xoff, (unsigned)*block_nkvs(x),
+                  hit ? "remove the key" : "not found");
             if (!hit || DONE != block_delete(x, key, false))
                 return FAIL; /* not found */
             block_write(x);
@@ -257,15 +267,21 @@ int block_delete_deep(IN sBlock *block, IN const sDBT *key)
         uint32_t yoff = block_lptr(x, k);
         if (!hit)
         {
+            TRACE(MYDB_TRACE_TREE, "page %u inner, %u keys -> child page %u", (unsigned)xoff,
+                  (unsigned)*block_nkvs(x), (unsigned)yoff);
             if (DONE != split_if_full(db, xoff, yoff, &split))
                 return FAIL;
             if (split)
+            {
+                TRACE(MYDB_TRACE_TREE, "a page was split on the way: start again from the root");
                 return 1;
+            }
             xoff = yoff;
             continue;
         }
         //-----------------------------------------
         /* The key is in the inner block x: the predecessor */
+        TRACE(MYDB_TRACE_TREE, "page %u inner: the key is here, look for a neighbour key", (unsigned)xoff);
         uint32_t holder;
         int rc = prepare_spine(db, xoff, yoff, true, &holder);
         if (rc < 0)
@@ -290,6 +306,8 @@ int block_delete_deep(IN sBlock *block, IN const sDBT *key)
             return (DONE == replace_by_neighbour(db, xoff, key, holder, true)) ? 0 : -1;
         //-----------------------------------------
         /* both subtrees are empty: remove the key with its right subtree */
+        TRACE(MYDB_TRACE_TREE, "page %u: both subtrees of the key are empty, remove it with the right one",
+              (unsigned)xoff);
         if (!(x = block_create(db, xoff)))
             return FAIL;
         k = block_find_ge(x, key, &iter);

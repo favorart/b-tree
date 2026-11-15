@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "mydb_block_low.h"
 #include "mydb_block.h"
+#include "mydb_trace.h"
 #include "mydb_techb.h"
 #include "mydb_cache.h"
 
@@ -54,6 +55,8 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
 {
     if ((*block_type(block)) == Leaf)
     {
+        TRACE(MYDB_TRACE_TREE, "page %u leaf, %u keys, %u B free: insert or update", (unsigned)block->offset_,
+              (unsigned)*block_nkvs(block), (unsigned)block->head_->free_size_);
         if (DONE != block_insert(block, key, value, NULL, MYDB_INVALIDPTR))
             return FAIL;
         return block_write(block);
@@ -72,11 +75,16 @@ eDBState block_add_nonfull(IN sBlock *block, IN const sDBT *key, IN const sDBT *
         /* the key lives in this inner block - update the value in place */
         if (k && !key_compare(k, key))
         {
+            TRACE(MYDB_TRACE_TREE, "page %u inner: the key is here, update in place",
+                  (unsigned)block->offset_);
             if (DONE != block_change(block, key, value, k, MYDB_INVALIDPTR))
                 return FAIL;
             return block_write(block);
         }
         //-----------------------------------------
+        TRACE(MYDB_TRACE_TREE, "page %u inner, %u keys, %u B free -> child page %u", (unsigned)block->offset_,
+              (unsigned)*block_nkvs(block), (unsigned)block->head_->free_size_,
+              (unsigned)block_lptr(block, k));
         sBlock *ychild = block_create(block->owner_db_, block_lptr(block, k));
         if (!ychild)
             return FAIL;
@@ -113,6 +121,8 @@ eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value
         //-----------------------------------------
         if (k && !key_compare(key, k))
         {
+            TRACE(MYDB_TRACE_TREE, "page %u %s: found", (unsigned)block->offset_,
+                  (*block_type(block) == Leaf) ? "leaf" : "inner");
             sDBT val = block_key_data(block, k);
             //-----------------------------------------
             value->data = malloc(val.size ? val.size : 1U);
@@ -128,11 +138,14 @@ eDBState block_select_deep(IN sBlock *block, IN const sDBT *key, OUT sDBT *value
         //-----------------------------------------
         if ((*block_type(block)) == Leaf)
         {
+            TRACE(MYDB_TRACE_TREE, "page %u leaf: not found", (unsigned)block->offset_);
             value->data = NULL;
             value->size = 0;
             return FAIL;
         }
         //-----------------------------------------
+        TRACE(MYDB_TRACE_TREE, "page %u inner, %u keys -> child page %u", (unsigned)block->offset_,
+              (unsigned)*block_nkvs(block), (unsigned)block_lptr(block, k));
         if (!(block = block_create(block->owner_db_, block_lptr(block, k))))
             return FAIL;
     }
@@ -200,11 +213,18 @@ eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zch
     block_write(zchild);
     block_write(parent);
     //-----------------------------------------
-#ifdef _DEBUG
-    block_print_dbg(parent, "parent");
-    block_print_dbg(ychild, "ychild");
-    block_print_dbg(zchild, "zchild");
-#endif
+    if (TRACE_ON(MYDB_TRACE_TREE))
+    {
+        char buf[MYDB_TRACE_KEYBUF];
+        sDBT median = {0};
+        for (sDBT it = {0}, *m = block_key_next(parent, &it, NULL); m; m = block_key_next(parent, m, NULL))
+            if (block_rptr(parent, m) == zchild->offset_)
+                median = *m;
+        TRACE(MYDB_TRACE_TREE, "split %s page %u -> new page %u, median %s up into page %u (%u + %u keys)",
+              (*block_type(ychild) == Leaf) ? "leaf" : "inner", (unsigned)ychild->offset_,
+              (unsigned)zchild->offset_, mydb_trace_key(median.data, median.size, buf),
+              (unsigned)parent->offset_, (unsigned)*block_nkvs(ychild), (unsigned)*block_nkvs(zchild));
+    }
     return DONE;
 }
 //-------------------------------------------------------------------------------------------------------------
@@ -288,6 +308,7 @@ sBlock *block_create(IN sDB *db, IN uint_t offset)
 }
 void block_release(IN sDB *db, IN uint32_t offset)
 {
+    TRACE(MYDB_TRACE_TREE, "release page %u", (unsigned)offset);
     techb_set_bit(db, offset, false);
 }
 //-------------------------------------------------------------------------------------------------------------

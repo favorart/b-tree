@@ -2,6 +2,7 @@
 #include "mydb_block.h"
 #include "mydb_cache.h"
 #include "mydb_low.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 /* A hash table cell, linked into the LRU list */
@@ -195,6 +196,9 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
        *  a consistent tree, and replaying the journal from the last
        *  checkpoint over it gives the right result (operations are idempotent).
        */
+            TRACE(MYDB_TRACE_PAGES, "cache miss page %u: evict page %u%s", (unsigned)offset,
+                  (unsigned)Cch->LRULast->offset,
+                  Cch->LRULast->block->dirty_ ? " (dirty: write all dirty pages)" : "");
             if (Cch->LRULast->block->dirty_ && mydb_sync_pages(db))
             {
                 mydb_errno = MYDB_ERR_BWRITE;
@@ -232,6 +236,8 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
         }
         else
         {
+            TRACE(MYDB_TRACE_PAGES, "cache miss page %u: free slot %u of %u", (unsigned)offset,
+                  (unsigned)Cch->n_pgs, (unsigned)Cch->all_pgs);
             hl->block = &Cch->blocks_[Cch->n_pgs];
             hl_memory = (Cch->memory_ + Cch->n_pgs * Cch->sz_pg);
             ++Cch->n_pgs;
@@ -286,19 +292,12 @@ bool mydb_cache_push(IN sDB *db, IN uint32_t offset, OUT sBlock **block)
             Cch->LRUHead = &Cch->blHash_[h];
         }
         //-----------------------------------------------
-
-#ifdef _DEBUG_CACHE
-        printf("exact\n");
-#endif // _DEBUG_CACHE
     }
     //-----------------------------------------------
     (*block) = hl->block;
     (*block)->offset_ = offset;
 
     //-----------------------------------------------
-#ifdef _DEBUG_CACHE
-    mydb_cache_print_debug(db);
-#endif // _DEBUG_CACHE
     //-----------------------------------------------
     return in_hash;
 }
@@ -307,6 +306,10 @@ bool mydb_cache_sync(IN sDB *db)
     sCache *Cch = db->cache_;
     //-----------------------------------------------
     /* every used cell of the blocks array is a cached page (the LRU tail too) */
+    uint_t dirty = 0U;
+    for (uint_t i = 0U; i < Cch->n_pgs; ++i)
+        dirty += Cch->blocks_[i].dirty_;
+    TRACE(MYDB_TRACE_PAGES, "write %u dirty pages of %u cached", (unsigned)dirty, (unsigned)Cch->n_pgs);
     for (uint_t i = 0U; i < Cch->n_pgs; ++i)
     {
         if (DONE != block_dump(&Cch->blocks_[i]))
@@ -331,26 +334,4 @@ void mydb_cache_free(IN sDB *db)
     db->cache_ = NULL;
 }
 //-------------------------------------------------------------------------------------------------------------
-#ifdef _DEBUG_CACHE
-void mydb_cache_print_debug(IN sDB *db)
-{
-    sCache *Cch = db->cache_;
-
-    // for ( uint_t j = 0U; j < Cch->szHash_; ++j )
-    for (uint_t i = (Cch->szHash_ - 4U); i != 6U; i = (i + 1) % Cch->szHash_)
-        // for ( uint_t i = 0U; i < Cch->szHash_; ++i )
-        // if ( Cch->blHash_[i].offset ) // && i != cache_hash (Cch->blHash_[i].offset) % Cch->szHash_ )
-        // for ( uint_t i = j - 3; i <= j + 3; ++i )
-        printf("%3d offset=%5d prev=%3d next=%3d hash=%d\n", i, Cch->blHash_[i].offset,
-               Cch->blHash_[i].prev ? (Cch->blHash_[i].prev - Cch->blHash_) : -1,
-               Cch->blHash_[i].next ? (Cch->blHash_[i].next - Cch->blHash_) : -1,
-               cache_hash(Cch->blHash_[i].offset) % Cch->szHash_);
-    printf("last index: %d\n", Cch->LRULast - Cch->blHash_);
-    printf("head index: %d\n", Cch->LRUHead - Cch->blHash_);
-    printf("nmbr pages: %d\n", Cch->n_pgs);
-    printf("\n");
-
-    return;
-}
-#endif // _DEBUG_CACHE
 //-------------------------------------------------------------------------------------------------------------

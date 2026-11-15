@@ -2,6 +2,7 @@
 #include "mydb_block_low.h"
 #include "mydb_block.h"
 #include "mydb_techb.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 static void compose(OUT uint32_t *offset, IN uint32_t sz_page, IN uint_t ipage, IN uint_t ibyte,
@@ -96,9 +97,9 @@ uint32_t techb_get_index_of_first_free_bit(IN sDB *db)
                     *byte |= (1U << ibit);
                     ++db->head_.nodes_count_;
 
-#ifdef _DEBUG_TECHB
-                    printf("debug compose: page=%u byte=%u bit=%u\n", ipage, ibyte, ibit);
-#endif // _DEBUG_TECHB
+                    TRACE(MYDB_TRACE_PAGES,
+                          "allocate page %u (bitmap page %u, byte %u, bit %u), %u pages used",
+                          (unsigned)offset, ipage, ibyte, ibit, (unsigned)db->head_.nodes_count_);
                     db->techb_last0_ = offset;
 
                     db->techb_array_[ipage].dirty_ = true;

@@ -4,6 +4,7 @@
 #include "mydb_techb.h"
 #include "mydb_cache.h"
 #include "mydb_log.h"
+#include "mydb_trace.h"
 
 //-------------------------------------------------------------------------------------------------------------
 int mydb_head_sync(IN sDB *db)
@@ -89,6 +90,8 @@ static int mydb_split_root(IN sDB *db)
 
     db->root_ = new_root;
     db->head_.offset2root_ = new_root->offset_;
+    TRACE(MYDB_TRACE_TREE, "the root page %u is full: new root page %u above it, the tree grows",
+          (unsigned)old_root, (unsigned)new_root->offset_);
     //-----------------------------------------
     return (DONE == block_split_child(new_root, rb, new_block)) ? 0 : -1;
 }
@@ -96,6 +99,8 @@ static int mydb_split_root(IN sDB *db)
 sDB *mydb_create(IN const char *file, IN const sDBC *conf)
 {
     const char *error_prefix = "mydb creation";
+    mydb_trace_init();
+    mydb_trace_op();
     //-----------------------------------------
     size_t db_size = (conf && conf->db_size) ? conf->db_size : MYDB_DEFAULT_DB_SIZE;
     size_t page_size = (conf && conf->page_size) ? conf->page_size : MYDB_DEFAULT_PAGE_SIZE;
@@ -157,6 +162,9 @@ sDB *mydb_create(IN const char *file, IN const sDBC *conf)
     if (!(db->log_ = mydb_log_open(file, true)) || mydb_flush(db))
         goto CREAT_FAIL;
     //-----------------------------------------
+    TRACE(MYDB_TRACE_OPS, "create '%s': page %u B, %u data pages, %u bitmap pages, cache %u B, root page %u",
+          file, (unsigned)page_size, (unsigned)db->head_.block_count_, (unsigned)techb, (unsigned)cch_size,
+          (unsigned)db->head_.offset2root_);
     return db;
 
 CREAT_FAIL:
@@ -166,6 +174,8 @@ CREAT_FAIL:
 sDB *mydb_open(IN const char *file)
 {
     const char *error_prefix = "mydb open";
+    mydb_trace_init();
+    mydb_trace_op();
     //-----------------------------------------
     /* Check for db file existence */
     if (!file || access(file, F_OK | R_OK | W_OK) == -1)
@@ -203,6 +213,9 @@ sDB *mydb_open(IN const char *file)
     //-----------------------------------------
     if (!mydb_load(db, error_prefix) || !mydb_root(db))
         goto OPEN_FAIL;
+    TRACE(MYDB_TRACE_OPS, "open '%s': page %u B, %u of %u data pages used, root page %u", file,
+          (unsigned)db->head_.page_size_, (unsigned)db->head_.nodes_count_, (unsigned)db->head_.block_count_,
+          (unsigned)db->head_.offset2root_);
     //-----------------------------------------
     /*   After a crash of the application dbopen ()
    *   must restore the last state of the B-tree
@@ -223,6 +236,8 @@ int mydb_close(IN sDB *db)
     int rc = 0;
     if (db)
     {
+        mydb_trace_op();
+        TRACE(MYDB_TRACE_OPS, "close: %u pages used", (unsigned)db->head_.nodes_count_);
         /* write everything only for a completely opened db */
         if (db->hfile_ != -1 && db->cache_ && db->techb_array_ && db->root_ && db->log_)
             rc = mydb_flush(db);
@@ -255,10 +270,25 @@ static bool mydb_check_key(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     }
     return true;
 }
+static void mydb_trace_call(IN const char *what, IN const sDBT *key, IN const sDBT *data)
+{
+    mydb_trace_op();
+    if (TRACE_ON(MYDB_TRACE_OPS))
+    {
+        char buf[MYDB_TRACE_KEYBUF];
+        if (data)
+            TRACE(MYDB_TRACE_OPS, "%s key=%s (%zu B) value %zu B", what,
+                  mydb_trace_key(key->data, key->size, buf), key->size, data->size);
+        else
+            TRACE(MYDB_TRACE_OPS, "%s key=%s (%zu B)", what, mydb_trace_key(key->data, key->size, buf),
+                  key->size);
+    }
+}
 int mydb_delete(IN sDB *db, IN const sDBT *key)
 {
     if (!mydb_check_key(db, key, NULL))
         return -1;
+    mydb_trace_call(db->replaying_ ? "replay delete" : "delete", key, NULL);
     //-----------------------------------------
     /* Write ahead log */
     if (mydb_logging(db, LOG_DELETE, key, NULL))
@@ -275,15 +305,19 @@ int mydb_delete(IN sDB *db, IN const sDBT *key)
     sBlock *rb;
     while ((rb = mydb_root(db)) && *block_type(rb) == Pass && *block_nkvs(rb) == 0U)
     {
+        TRACE(MYDB_TRACE_TREE, "the root page %u has no keys: page %u is the root now, the tree is lower",
+              (unsigned)rb->offset_, (unsigned)rb->head_->pointer_0_);
         db->head_.offset2root_ = rb->head_->pointer_0_;
         block_release(db, rb->offset_);
     }
+    TRACE(MYDB_TRACE_OPS, "delete %s", rc ? "failed: no such key" : "done");
     return rc;
 }
 int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
 {
     if (!mydb_check_key(db, key, data) || !data)
         return -1;
+    mydb_trace_call(db->replaying_ ? "replay insert" : "insert", key, data);
     //-----------------------------------------
     /* Write ahead log */
     if (mydb_logging(db, LOG_INSERT, key, data))
@@ -291,17 +325,26 @@ int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     //-----------------------------------------
     if (mydb_split_root(db) || !mydb_root(db))
         return -1;
-    return (DONE == block_add_nonfull(db->root_, key, data)) ? 0 : -1;
+    int rc = (DONE == block_add_nonfull(db->root_, key, data)) ? 0 : -1;
+    TRACE(MYDB_TRACE_OPS, "insert %s", rc ? "failed" : "done");
+    return rc;
 }
 int mydb_select(IN sDB *db, IN const sDBT *key, OUT sDBT *data)
 {
-    if (!mydb_check_key(db, key, NULL) || !data || !mydb_root(db))
+    if (!mydb_check_key(db, key, NULL) || !data)
         return -1;
-    return (DONE == block_select_deep(db->root_, key, data)) ? 0 : -1;
+    mydb_trace_call("select", key, NULL);
+    if (!mydb_root(db))
+        return -1;
+    int rc = (DONE == block_select_deep(db->root_, key, data)) ? 0 : -1;
+    TRACE(MYDB_TRACE_OPS, "select %s", rc ? "not found" : "found");
+    return rc;
 }
 /* checkpoint: all pages to disk, then the journal is not needed anymore */
 int mydb_flush(IN sDB *db)
 {
+    TRACE(MYDB_TRACE_OPS, "checkpoint: %u pages used, root page %u", (unsigned)db->head_.nodes_count_,
+          (unsigned)db->head_.offset2root_);
     if (mydb_sync_pages(db) || mydb_log_checkpoint(db))
         return -1;
     return 0;
