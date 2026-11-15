@@ -15,7 +15,7 @@ typedef enum mydb_error
     MYDB_ERR_CCHSET,
     MYDB_ERR_KVSIZE,
     MYDB_ERR_FORMAT,
-    MYDB_ERR_LOGWRT /* , ... */
+    MYDB_ERR_LOGWRT
 } e_mydb_err;
 
 extern e_mydb_err mydb_errno;
