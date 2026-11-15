@@ -350,8 +350,9 @@ static int rebalance_child(IN sDB *db, IN uint32_t xoff, IN uint32_t coff)
     block_write(L);
     block_write(R);
     block_write(x);
-    TRACE(MYDB_TRACE_TREE, "page %u: move %u entries from page %u into page %u (%u B used)", (unsigned)xoff,
-          moved, (unsigned)from->offset_, (unsigned)to->offset_, (unsigned)used_bytes(to));
+    TRACE(MYDB_TRACE_TREE, "page %u: move %u entries from page %u into page %u (%u B used): %s from the %s",
+          (unsigned)xoff, moved, (unsigned)from->offset_, (unsigned)to->offset_, (unsigned)used_bytes(to),
+          (*block_type(to) == Leaf) ? "leaf" : "inner", child_left ? "right" : "left");
     return 1;
 }
 /*  Go down the right (want_max) or the left spine of the subtree under x, splitting full blocks.

@@ -675,6 +675,74 @@ static void test_inner_node_cases(void **state)
 }
 //-------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------
+/* every kind of rebalancing happens, and the tree is right after each delete:
+ * a borrow from the left and from the right sibling, for leaves and for inner pages, and merges */
+static void test_rebalance_cases(void **state)
+{
+    (void)state;
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    db_trace(MYDB_TRACE_TREE, f);
+    sDB *db = small_db("u_cases.db", 4U << 20);
+    CHECK(db != NULL);
+    enum
+    {
+        N = 4000
+    };
+    static bool present[N];
+    memset(present, 0, sizeof(present));
+    char key[16];
+    char val[24];
+    long n = 0;
+    for (int i = 0; i < N; ++i)
+    {
+        int id = (i * 7919) % N;
+        snprintf(key, sizeof(key), "key%05d", id);
+        snprintf(val, sizeof(val), "v%0*d", 1 + id % 17, id); /* values of different length */
+        CHECK(db_insert(db, key, strlen(key), val, strlen(val)) == 0);
+        n += !present[id];
+        present[id] = true;
+    }
+    /* delete from both ends towards the middle, then at random: underfull pages on both sides */
+    for (int i = 0; i < 3 * N; ++i)
+    {
+        int id = (i % 3 == 0) ? i / 3 : (i % 3 == 1) ? N - 1 - i / 3 : (i * 104729) % N;
+        snprintf(key, sizeof(key), "key%05d", id);
+        if (present[id])
+        {
+            CHECK(db_delete(db, key, strlen(key)) == 0);
+            present[id] = false;
+            --n;
+        }
+        if (i % 97 == 0)
+            CHECK(db_check(db) == n);
+    }
+    CHECK(db_check(db) == n);
+    db_close(db);
+    db_trace(MYDB_TRACE_OFF, NULL);
+
+    long size = ftell(f);
+    char *text = calloc((size_t)size + 1U, 1U);
+    CHECK(text != NULL);
+    if (text)
+    {
+        rewind(f);
+        CHECK(fread(text, 1U, (size_t)size, f) == (size_t)size);
+        const char *cases[] = {"leaf from the left", "leaf from the right", "inner from the left",
+                               "inner from the right", ": merge page "};
+        for (size_t i = 0U; i < sizeof(cases) / sizeof(*cases); ++i)
+        {
+            if (!strstr(text, cases[i]))
+                fprintf(stderr, "no '%s' in the trace\n", cases[i]);
+            CHECK(strstr(text, cases[i]) != NULL);
+        }
+        free(text);
+    }
+    fclose(f);
+}
+//-------------------------------------------------------------------------------------------------------------
 /* deletion merges and borrows: no empty pages, every page but the root keeps a quarter */
 static void test_rebalance(void **state)
 {
@@ -912,6 +980,7 @@ int main(void)
         cmocka_unit_test(test_check_detects_corruption),
         cmocka_unit_test(test_inner_node_cases),
         cmocka_unit_test(test_rebalance),
+        cmocka_unit_test(test_rebalance_cases),
         cmocka_unit_test(test_trace),
         cmocka_unit_test(test_trace_evict),
         cmocka_unit_test(test_fsync_failure),
