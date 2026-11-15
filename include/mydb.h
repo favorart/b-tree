@@ -31,8 +31,8 @@
 /** @{ */
 #define MYDB_LIB_VERSION_MAJOR  0
 #define MYDB_LIB_VERSION_MINOR  0
-#define MYDB_LIB_VERSION_PATCH  3
-#define MYDB_LIB_VERSION_STRING "0.0.3"
+#define MYDB_LIB_VERSION_PATCH  4
+#define MYDB_LIB_VERSION_STRING "0.0.4"
 /** @} */
 /** @name On-disk format: "MYDB" and the version */
 /** @{ */
