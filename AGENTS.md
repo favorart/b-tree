@@ -1,7 +1,7 @@
 # Notes for contributors and coding agents
 
 - Build: `make`; tests: `make test`; sanitizers: `make clean && make SAN=1 test`.
-  CI builds with `-Werror` on gcc and clang, with and without ASan/UBSan: keep the build warning-free.
+  CI builds with `-Werror` on gcc and clang (Linux, with and without ASan/UBSan) and Apple Clang (macOS): keep the build warning-free.
 - C99 + POSIX. Format with `make format` (clang-format, `.clang-format`); keep the `IN`/`OUT` markers
   and the `s`/`e` type prefixes. Comments are in English; the public API in `include/mydb.h` has doxygen comments.
 - Layout: `include/` public API, `src/` implementation, `examples/`, `tests/`; everything builds into `build/`.
@@ -13,4 +13,5 @@
 - On-disk format changes need `MYDB_VERSION` bumped in `include/mydb.h` and the README updated.
 - Debug with the trace (`MYDB_TRACE=1..4`, `src/mydb_trace.h`), not with `printf`: add a `TRACE ()` point for a new action.
 - Every behaviour change needs a test: `tests/test_units.c` for a module, `tests/test_mydb.c` through the API; `db_check` validates the tree.
-- A release: bump `MYDB_LIB_VERSION_*` in `include/mydb.h`, merge, push the tag `vX.Y.Z` (see `.github/workflows/release.yml`).
+- Releases are automatic: every push to `main` that passes CI is tagged `v0.0.N` and released (`.github/workflows/ci.yml`).
+- Commit messages and PR titles follow Conventional Commits: `fix:`, `feat:`, `refactor:`, `test:`, `docs:`, `ci:`, `build:`.
