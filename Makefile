@@ -6,7 +6,7 @@
 
 CC      ?= cc
 CFLAGS  ?= -O2 -g
-override CFLAGS += -std=c99 -Wall -Wextra -Iinclude -Isrc
+override CFLAGS += -std=c99 -Wall -Wextra -D_XOPEN_SOURCE=700 -Iinclude -Isrc
 LDFLAGS ?=
 
 BUILD   := build
