@@ -19,10 +19,20 @@ int mydb_head_sync(IN sDB *db)
     //-----------------------------------------
     return 0;
 }
+int (*mydb_fsync)(int fd) = fsync;
+
 int mydb_sync_pages(IN sDB *db)
 {
-    if (DONE != techb_sync(db) || mydb_cache_sync(db) || mydb_head_sync(db) || fsync(db->hfile_))
+    if (DONE != techb_sync(db) || mydb_cache_sync(db) || mydb_head_sync(db))
         return 1;
+    if (mydb_fsync(db->hfile_))
+    {
+        /* the pages were written but may be lost: write them again on the next sync,
+         * otherwise it writes nothing, succeeds and the checkpoint drops the journal */
+        fprintf(stderr, "mydb sync: %s\n", strerror(errno));
+        mydb_cache_mark_dirty(db);
+        return 1;
+    }
     return 0;
 }
 size_t db_max_kv_size(const sDB *db)

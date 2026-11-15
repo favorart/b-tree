@@ -187,7 +187,7 @@ int mydb_log_checkpoint(IN sDB *db)
     int rc = mydb_logging(db, LOG_CHKPNT, NULL, NULL);
     db->replaying_ = replaying;
 
-    if (rc || fsync(db->log_->fd))
+    if (rc || mydb_fsync(db->log_->fd))
         return -1;
     return 0;
 }
