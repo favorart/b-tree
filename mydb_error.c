@@ -1,6 +1,8 @@
 ﻿#include "stdafx.h"
 #include "mydb_error.h"
 
+e_mydb_err mydb_errno = MYDB_ERR_NONE;
+
 //-------------------------------------------------------------------------------------------------------------
 const char* strmyerror (e_mydb_err err)
 {

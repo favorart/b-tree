@@ -49,3 +49,8 @@ debug.mak.old
 libbtree.cpp
 libbtree.vcxproj
 libbtree.h
+
+# build output
+mydb_demo
+*.db
+*.db.log

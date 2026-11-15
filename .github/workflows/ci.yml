@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "**" ]
+
+# least privilege for GITHUB_TOKEN
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [ gcc, clang ]
+    name: ${{ matrix.cc }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: build
+      run: make CC=${{ matrix.cc }}
