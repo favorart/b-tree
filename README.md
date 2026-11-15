@@ -236,6 +236,8 @@ at a moment when the tree in memory is valid (between page fetches of an operati
 So the file always holds a consistent tree that reflects a prefix of the journal,
 and insert/delete are idempotent: repeating the operations from the last checkpoint gives the same state.
 A record torn by a crash is detected by its checksum and ignored.
+The journal does not grow without limit: when it is bigger than twice the cache (at least 4 MB),
+the operation that crossed it makes a checkpoint, as `db_flush` does.
 
 ## Tests
 

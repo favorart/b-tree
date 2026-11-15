@@ -45,6 +45,8 @@ static inline void mydb_wr32(void *p, uint32_t v)
 /* the implementation part of the public types (include/mydb.h) */
 #define MYDB_BITSINBYTE    8U
 #define MYDB_MAX_PAGE_SIZE (1U << 24) /* 16 MB */
+/* a checkpoint when the journal grows over 2 * cache size, but at least this */
+#define MYDB_LOG_LIMIT_MIN (4 * 1024 * 1024)
 /*  On-disk format: "MYDB" and the version */
 #define MYDB_MAGIC   0x4244594DU
 #define MYDB_VERSION 2U
