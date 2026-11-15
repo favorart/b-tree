@@ -667,6 +667,72 @@ static void test_inner_node_cases(void)
 }
 //-------------------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------------------
+/* deletion merges and borrows: no empty pages, every page but the root keeps a quarter */
+static void test_rebalance(void)
+{
+    FILE *f = tmpfile();
+    CHECK(f != NULL);
+    if (!f)
+        return;
+    db_trace(MYDB_TRACE_TREE, f);
+    sDB *db = small_db("u_rebalance.db", 4U << 20);
+    CHECK(db != NULL);
+    enum
+    {
+        N = 3000
+    };
+    static bool present[N];
+    char key[16];
+    for (int i = 0; i < N; ++i)
+    {
+        snprintf(key, sizeof(key), "key%05d", (i * 7919) % N);
+        CHECK(db_insert(db, key, strlen(key), "value", 5U) == 0);
+        present[(i * 7919) % N] = true;
+    }
+    sDBStat before;
+    CHECK(db_stats(db, &before) == 0);
+    long left = N;
+    for (int i = 0; i < N; ++i)
+    {
+        int id = (i * 104729) % N;
+        if (id % 10 == 0)
+            continue; /* keep 10% */
+        snprintf(key, sizeof(key), "key%05d", id);
+        CHECK(db_delete(db, key, strlen(key)) == 0);
+        present[id] = false;
+        --left;
+    }
+    CHECK(db_check(db) == left);
+    for (int id = 0; id < N; ++id)
+    {
+        void *v = NULL;
+        size_t len = 0U;
+        snprintf(key, sizeof(key), "key%05d", id);
+        CHECK((db_select(db, key, strlen(key), &v, &len) == 0) == present[id]);
+        free(v);
+    }
+    sDBStat after;
+    CHECK(db_stats(db, &after) == 0);
+    CHECK(after.empty_pages == 0U);
+    CHECK(after.height <= before.height);
+    CHECK(after.file_pages * 5U < before.file_pages); /* 10% of the keys in less than 20% of the pages */
+    CHECK(4U * after.used_bytes >= after.capacity_bytes / 2U); /* the fill is at least 1/8 on the average */
+    db_close(db);
+    db_trace(MYDB_TRACE_OFF, NULL);
+    //-----------------------------------------
+    long size = ftell(f);
+    char *text = calloc((size_t)size + 1U, 1U);
+    CHECK(text != NULL);
+    if (text)
+    {
+        rewind(f);
+        CHECK(fread(text, 1U, (size_t)size, f) == (size_t)size);
+        CHECK(strstr(text, ": merge page ") != NULL);
+        CHECK(strstr(text, ": move ") != NULL);
+        free(text);
+    }
+    fclose(f);
+}
 static void test_trace(void)
 {
     char buf[MYDB_TRACE_KEYBUF];
@@ -714,7 +780,7 @@ static void test_trace(void)
                                   "journal: LSN",        "allocate page",
                                   "cache miss page",     "split leaf page",
                                   "the tree grows",      "page 0 after insert",
-                                  "replace \"key",       "release page",
+                                  "merge page",          "release page",
                                   "the tree is lower",   "delete done",
                                   "checkpoint",          "close"};
         for (size_t i = 0U; i < sizeof(expected) / sizeof(*expected); ++i)
@@ -746,6 +812,7 @@ int main(void)
     RUN(test_errors);
     RUN(test_check_detects_corruption);
     RUN(test_inner_node_cases);
+    RUN(test_rebalance);
     RUN(test_trace);
     printf("%d checks, %d failed\n", n_checks, n_failed);
     return n_failed ? EXIT_FAILURE : EXIT_SUCCESS;

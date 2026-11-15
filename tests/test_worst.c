@@ -1,10 +1,10 @@
 /*  The worst and the awkward cases of the tree.
  *
- *  Deletion is lazy (no merging of pages, see src/mydb_block_delete.c), insertion
- *  splits pages by bytes. These tests run the workloads that hurt such a tree most,
- *  check that the tree stays correct and print its shape (db_stats) next to the
- *  shape of a "rebuilt" tree: the same keys inserted into a fresh database in a
- *  random order. The rebuilt tree is about what rebalancing on delete would give.
+ *  Insertion splits pages by bytes (at the edge for sequential keys), deletion merges
+ *  and borrows when a page falls below a quarter (see src/mydb_block_delete.c).
+ *  These tests run the workloads that hurt such a tree most, check that the tree stays
+ *  correct and keeps its fill, and print its shape (db_stats) next to the shape of a
+ *  "rebuilt" tree: the same keys inserted into a fresh database in a random order.
  *
  *  usage: test_worst [N]  (20000 keys by default); prints a Markdown table.
  */
@@ -152,6 +152,12 @@ static void row(const char *name, const sShape *a, const sShape *b)
 static void report(const char *name, sDB *db, const sSet *s, size_t page_size, size_t vsz)
 {
     sShape a = shape(db, s);
+    /* the deletion keeps the pages filled, sequential inserts fill them at the edge */
+    double fill = a.st.capacity_bytes ? (double)a.st.used_bytes / (double)a.st.capacity_bytes : 1.0;
+    if (strstr(name, "delete") || strstr(name, "keep"))
+        CHECK(a.st.empty_pages == 0U && fill >= 0.20);
+    if (strstr(name, "ascending") || strstr(name, "descending"))
+        CHECK(fill >= 0.60);
     db_close(db);
 
     sDB *fresh = open_db(FILE_B, page_size, 16U << 20);
@@ -179,8 +185,7 @@ int main(int argc, char *argv[])
 
     printf("%zu keys of %u bytes, values of %u bytes, pages of %zu bytes, cache %zu MB.\n", n, KEY_SIZE,
            VAL_SIZE, page, cache >> 20);
-    printf("Each cell: this tree / the same keys rebuilt in a fresh tree (about what rebalancing would "
-           "give).\n\n");
+    printf("Each cell: this tree / the same keys rebuilt in a fresh tree.\n\n");
     printf(
         "| case                               |    keys | height  | pages           | empty | fill        | "
         "lookup, us    |\n");
@@ -210,7 +215,7 @@ int main(int argc, char *argv[])
         put(db, &s, i, VAL_SIZE);
     report("descending inserts", db, &s, page, VAL_SIZE);
     //-----------------------------------------
-    /* lazy deletion: pages are not merged */
+    /* mass deletes: pages are merged and borrow from their siblings */
     memset(s.present, 0, n);
     db = open_db(FILE_A, page, cache);
     for (size_t i = 0U; i < n; ++i)
