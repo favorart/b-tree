@@ -632,6 +632,32 @@ static void test_journal_short_write(void **state)
     printf("short journal write: ok\n");
 }
 //-------------------------------------------------------------------------------------------------------------
+/* without db_flush () the journal does not grow without limit: a checkpoint every 2 * cache (at least 4 MB) */
+static void test_journal_bounded(void **state)
+{
+    (void)state;
+    sDBC conf = tiny_cache_conf(); /* 64 KB of cache: the limit is 4 MB */
+    sDB *db = dbcreate("t_growth.db", &conf);
+    CHECK(db);
+    uchar_t v[40];
+    memset(v, 'v', sizeof(v));
+    off_t biggest = 0;
+    for (uint32_t i = 0U; i < 120000U; ++i)
+    {
+        uint32_t k = i % 500U;
+        v[0] = (uchar_t)i;
+        CHECK(db_insert(db, &k, sizeof(k), v, sizeof(v)) == 0);
+        struct stat st;
+        CHECK(stat("t_growth.db.log", &st) == 0);
+        if (st.st_size > biggest)
+            biggest = st.st_size;
+    }
+    CHECK(biggest <= 4 * 1024 * 1024 + 1024); /* 120000 records would take about 8 MB */
+    CHECK(db_check(db) == 500);
+    CHECK(db_close(db) == 0);
+    printf("journal growth: ok (at most %lld bytes)\n", (long long)biggest);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_random_default(void **state)
 {
     (void)state;
@@ -678,6 +704,7 @@ int main(void)
         cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_failed_insert_not_replayed),
         cmocka_unit_test(test_journal_short_write),
+        cmocka_unit_test(test_journal_bounded),
         cmocka_unit_test(test_crash_recovery),
     };
     return cmocka_run_group_tests(tests, NULL, NULL);

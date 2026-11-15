@@ -336,6 +336,22 @@ static int mydb_log_result(IN sDB *db, IN int rc)
 {
     if (rc && mydb_logging(db, LOG_ABORT, NULL, NULL))
         TRACE(MYDB_TRACE_OPS, "the abort record is not written: recovery may repeat the failed operation");
+    /*  Only db_flush () and db_close () made checkpoints: without them the journal kept every value
+     *  and the recovery replayed all of them. The tree is valid here, between operations.
+     */
+    if (db->log_ && !db->replaying_)
+    {
+        off_t size = mydb_log_size(db);
+        off_t limit = (off_t)db->head_.cache_size_ * 2;
+        if (limit < MYDB_LOG_LIMIT_MIN)
+            limit = MYDB_LOG_LIMIT_MIN;
+        if (size > limit)
+        {
+            TRACE(MYDB_TRACE_OPS, "the journal has %lld bytes: checkpoint", (long long)size);
+            if (mydb_flush(db))
+                fprintf(stderr, "mydb journal: the checkpoint failed, the journal keeps growing\n");
+        }
+    }
     return rc;
 }
 int mydb_delete(IN sDB *db, IN const sDBT *key)
