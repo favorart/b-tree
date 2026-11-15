@@ -34,12 +34,11 @@
 /** @} */
 //-------------------------------------------------------------------------------------------------------------
 /** Result of internal operations */
-typedef enum db_state eDBState;
-enum db_state // : uchar_t
+typedef enum db_state // : uchar_t
 {
     DONE = 0,
     FAIL = -1
-};
+} eDBState;
 //-------------------------------------------------------------------------------------------------------------
 /** A key or a value: a byte string (see `man dbopen`) */
 typedef struct DBT sDBT;
