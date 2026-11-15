@@ -1,0 +1,49 @@
+name: Release
+
+# push a tag vMAJOR.MINOR.PATCH (equal to MYDB_LIB_VERSION_STRING in include/mydb.h)
+on:
+  push:
+    tags: [ "v*.*.*" ]
+
+permissions:
+  contents: write  # create and delete releases
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: the tag matches the version in mydb.h
+      run: |
+        version=$(sed -n 's/^#define MYDB_LIB_VERSION_STRING "\(.*\)"/\1/p' include/mydb.h)
+        test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != v$version"; exit 1; }
+
+    - name: build and test
+      run: make CFLAGS="-O2 -g -Werror" all test
+
+    - name: package
+      run: |
+        name=mydb-${GITHUB_REF_NAME#v}-linux-x86_64
+        mkdir -p "$name/lib"
+        cp -r include "$name/"
+        cp build/libmydb.a "$name/lib/"
+        cp README.md LICENSE "$name/"
+        tar czf "$name.tar.gz" "$name"
+        echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+
+    - name: create the release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "$GITHUB_REF_NAME" "$ASSET" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+
+    - name: keep only the 3 latest releases (the tags stay)
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release list --limit 100 --json tagName,createdAt \
+          --jq 'sort_by(.createdAt) | reverse | .[3:] | .[].tagName' |
+        while read -r tag; do
+          echo "deleting the release $tag"
+          gh release delete "$tag" --yes
+        done

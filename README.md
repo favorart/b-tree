@@ -241,6 +241,14 @@ and verifies the tree invariants with `db_check`:
 - Integers are stored in the native byte order (the files are not portable between endiannesses).
 - Fatal I/O errors inside the cache terminate the process (`exit`), as in the original code.
 
+## Versions and releases
+
+The library follows semantic versioning: `MYDB_LIB_VERSION_STRING` in [`include/mydb.h`](include/mydb.h).
+Pushing a tag `vMAJOR.MINOR.PATCH` that matches it builds and tests the code and publishes
+a GitHub release with `include/` and `libmydb.a` for Linux x86-64.
+Only the 3 latest releases are kept; older tags stay in git.
+The on-disk format has its own number (`MYDB_VERSION`): files of another format are rejected.
+
 ## License
 
 [GPL-2.0](LICENSE)
