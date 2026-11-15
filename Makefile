@@ -9,7 +9,7 @@
 
 CC      ?= cc
 CFLAGS  ?= -O2 -g
-override CFLAGS += -std=c99 -Wall -Wextra -Wpedantic -D_XOPEN_SOURCE=700 -Iinclude -Isrc
+override CFLAGS += -std=c99 -Wall -Wextra -Wpedantic -D_XOPEN_SOURCE=700 -D_FILE_OFFSET_BITS=64 -Iinclude -Isrc
 LDFLAGS ?=
 
 # the version comes from the git tag: 0.0.5, or 0.0.5-3-gabc1234 three commits after it

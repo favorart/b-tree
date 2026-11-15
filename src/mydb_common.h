@@ -5,6 +5,10 @@
 #if !defined(__unix__) && !defined(__APPLE__)
 #error mydb needs a POSIX system
 #endif
+/* files up to 4 GB on 32-bit systems too */
+#ifndef _FILE_OFFSET_BITS
+#define _FILE_OFFSET_BITS 64
+#endif
 #ifndef _XOPEN_SOURCE
 #define _XOPEN_SOURCE 700
 #endif
@@ -27,6 +31,8 @@
 #define IN
 #define OUT
 //-------------------------------------------------------------------------------------------------------------
+/* offsets in the file go up to 4 GB: a 32-bit off_t would wrap at 2 GB (C99 has no static_assert) */
+typedef char mydb_off_t_is_64_bits[(sizeof(off_t) >= 8U) ? 1 : -1];
 typedef unsigned char uchar_t;
 typedef uint32_t uint_t;
 //-------------------------------------------------------------------------------------------------------------
