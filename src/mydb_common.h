@@ -44,6 +44,7 @@ static inline void mydb_wr32(void *p, uint32_t v)
 //-------------------------------------------------------------------------------------------------------------
 /* the implementation part of the public types (include/mydb.h) */
 #define MYDB_BITSINBYTE 8U
+#define MYDB_MAX_PAGE_SIZE (1U << 24) /* 16 MB */
 /*  On-disk format: "MYDB" and the version */
 #define MYDB_MAGIC   0x4244594DU
 #define MYDB_VERSION 2U

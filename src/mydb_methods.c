@@ -96,6 +96,25 @@ static int mydb_split_root(IN sDB *db, IN const sDBT *key)
     return (DONE == block_split_child(new_root, rb, new_block, key)) ? 0 : -1;
 }
 //-------------------------------------------------------------------------------------------------------------
+/* | header | bitmap pages | data pages |, one bit of a bitmap page per data page */
+static void mydb_geometry(IN size_t db_size, IN size_t page_size, OUT uint32_t *pages, OUT uint32_t *techb)
+{
+    *pages = (uint32_t)((db_size - sizeof(sDBFH)) / page_size);
+    *techb = (uint32_t)((*pages + MYDB_BITSINBYTE * page_size) / (MYDB_BITSINBYTE * page_size + 1U));
+}
+/* the header of an existing file describes a file that mydb_create () could have made */
+static bool mydb_header_valid(IN const sDBFH *h, IN off_t file_size)
+{
+    if (h->magic_ != MYDB_MAGIC || h->version_ != MYDB_VERSION || h->page_size_ < MYDB_MIN_PAGE_SIZE ||
+        h->page_size_ > MYDB_MAX_PAGE_SIZE || h->db_size_ < sizeof(sDBFH) + 3U * (size_t)h->page_size_)
+        return false;
+    uint32_t pages, techb;
+    mydb_geometry(h->db_size_, h->page_size_, &pages, &techb);
+    return h->techb_count_ == techb && h->block_count_ == pages - techb &&
+           h->nodes_count_ <= h->block_count_ && h->offset2root_ < h->block_count_ &&
+           file_size >= (off_t)sizeof(sDBFH) + (off_t)pages * (off_t)h->page_size_;
+}
+//-------------------------------------------------------------------------------------------------------------
 sDB *mydb_create(IN const char *file, IN const sDBC *conf)
 {
     const char *error_prefix = "mydb creation";
@@ -106,7 +125,7 @@ sDB *mydb_create(IN const char *file, IN const sDBC *conf)
     size_t page_size = (conf && conf->page_size) ? conf->page_size : MYDB_DEFAULT_PAGE_SIZE;
     size_t cch_size = (conf && conf->cache_size) ? conf->cache_size : MYDB_DEFAULT_CACHE_SIZE;
 
-    if (!file || page_size < MYDB_MIN_PAGE_SIZE || page_size > (1U << 24) || db_size > UINT32_MAX ||
+    if (!file || page_size < MYDB_MIN_PAGE_SIZE || page_size > MYDB_MAX_PAGE_SIZE || db_size > UINT32_MAX ||
         cch_size > UINT32_MAX || db_size < sizeof(sDBFH) + 3U * page_size)
     {
         mydb_errno = MYDB_ERR_FPARAM;
@@ -129,9 +148,8 @@ sDB *mydb_create(IN const char *file, IN const sDBC *conf)
         goto CREAT_FAIL;
     }
     //-----------------------------------------
-    /* | header | bitmap pages | data pages |, one bit of a bitmap page per data page */
-    uint32_t pages = (uint32_t)((db_size - sizeof(sDBFH)) / page_size);
-    uint32_t techb = (uint32_t)((pages + MYDB_BITSINBYTE * page_size) / (MYDB_BITSINBYTE * page_size + 1U));
+    uint32_t pages, techb;
+    mydb_geometry(db_size, page_size, &pages, &techb);
 
     db->head_.magic_ = MYDB_MAGIC;
     db->head_.version_ = MYDB_VERSION;
@@ -199,9 +217,9 @@ sDB *mydb_open(IN const char *file)
         goto OPEN_FAIL;
     }
     //-----------------------------------------
-    if (read(db->hfile_, &db->head_, sizeof(sDBFH)) != (ssize_t)sizeof(sDBFH) ||
-        db->head_.magic_ != MYDB_MAGIC || db->head_.version_ != MYDB_VERSION ||
-        db->head_.page_size_ < MYDB_MIN_PAGE_SIZE || db->head_.offset2root_ >= db->head_.block_count_)
+    struct stat st;
+    if (fstat(db->hfile_, &st) || read(db->hfile_, &db->head_, sizeof(sDBFH)) != (ssize_t)sizeof(sDBFH) ||
+        !mydb_header_valid(&db->head_, st.st_size))
     {
         /* do not overwrite a foreign file on close */
         close(db->hfile_);
