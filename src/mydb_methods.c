@@ -94,6 +94,12 @@ static int mydb_split_root(IN sDB *db, IN const sDBT *key)
         return -1;
     if (!block_isfull(rb))
         return 0;
+    if (!key && db->head_.block_count_ - db->head_.nodes_count_ < 2U)
+    { /* a delete: no two free pages for a new root, go on (see split_if_full) */
+        TRACE(MYDB_TRACE_TREE, "the root page %u is full, no free pages to split it: go on",
+              (unsigned)rb->offset_);
+        return 0;
+    }
     //-----------------------------------------
     uint32_t old_root = rb->offset_;
     /* alloc new free blocks */

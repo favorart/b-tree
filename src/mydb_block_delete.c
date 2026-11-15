@@ -131,6 +131,11 @@ static eDBState split_if_full(IN sDB *db, IN uint32_t parent_off, IN uint32_t ch
         return FAIL;
     if (!block_isfull(child))
         return DONE;
+    if (db->head_.nodes_count_ >= db->head_.block_count_)
+    { /* no free page: go on without the split, the changes below check their room themselves */
+        TRACE(MYDB_TRACE_TREE, "page %u is full, no free page to split it: go on", (unsigned)child_off);
+        return DONE;
+    }
 
     sBlock *parent = block_create(db, parent_off);
     sBlock *sibling = block_create(db, MYDB_OFFSET2NEW);

@@ -419,6 +419,28 @@ static void test_crash(int round, bool torn_tail)
     model_free(&m);
 }
 /* a header that mydb_create () could not have made is rejected without touching the file */
+/* a full file and a cache smaller than the tree: deletes split nothing when there is no free page */
+static void test_full_delete_some(void **state)
+{
+    (void)state;
+    sDBC conf = tiny_cache_conf();
+    conf.db_size = 400U * 512U;
+    sDB *db = dbcreate("t_full2.db", &conf);
+    CHECK(db);
+    uchar_t v[40];
+    memset(v, 'v', sizeof(v));
+    uint32_t n = 0U;
+    while (db_insert(db, &n, sizeof(n), v, sizeof(v)) == 0)
+        CHECK(++n < 100000U);
+    for (uint32_t k = 0U; k < n; k += 3U)
+        CHECK(db_delete(db, &k, sizeof(k)) == 0);
+    CHECK(db_check(db) == (long)(n - (n + 2U) / 3U));
+    sDBStat st;
+    CHECK(db_stats(db, &st) == 0 && st.file_pages == st.leaf_pages + st.inner_pages);
+    CHECK(db_close(db) == 0);
+    printf("full file, deletes with a small cache: ok (%u keys fit)\n", n);
+}
+//-------------------------------------------------------------------------------------------------------------
 static void test_open_bad_header(void **state)
 {
     (void)state;
@@ -520,6 +542,7 @@ int main(void)
         cmocka_unit_test(test_random_4k_pages),
         cmocka_unit_test(test_delete_all),
         cmocka_unit_test(test_full),
+        cmocka_unit_test(test_full_delete_some),
         cmocka_unit_test(test_open_bad_header),
         cmocka_unit_test(test_crash_recovery),
     };
