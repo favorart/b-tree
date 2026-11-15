@@ -38,6 +38,11 @@ jobs:
     - name: ASan of older compilers crashes at startup with high ASLR entropy
       if: matrix.san == 1
       run: sudo sysctl -w vm.mmap_rnd_bits=28
+    - name: install cmocka
+      # the runner's package index is usually fresh enough; update only if it is not
+      run: |
+        sudo apt-get install -y --no-install-recommends libcmocka-dev ||
+          { sudo apt-get update && sudo apt-get install -y --no-install-recommends libcmocka-dev; }
     - name: build (warnings are errors)
       run: make -j4 all
     - name: demo
@@ -55,6 +60,11 @@ jobs:
       CFLAGS: -O2 -g -Werror
     steps:
     - uses: actions/checkout@v5
+    - name: install cmocka
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: 1
+        HOMEBREW_NO_INSTALL_CLEANUP: 1
+      run: brew install cmocka pkg-config
     - name: build (warnings are errors)
       run: make -j4 all
     - name: tests
