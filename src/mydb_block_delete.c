@@ -8,12 +8,14 @@
 /*  DELETION
  *
  *  Keys and values have variable length, so the classic CLRS deletion with
- *  "at least t-1 keys in a node" does not apply directly. A lazy variant is used:
+ *  "at least t-1 keys in a node" does not apply directly: the fill is measured in bytes.
  *
  *  - The path from the root is kept non-full exactly as in insertion: a full
  *    child is split before going down. A non-full block has room to accept a
  *    median key and to grow one of its entries (see block_max_entry).
- *  - A key in a leaf is just removed; leaves may become underfull or empty.
+ *  - Before going down into a child, an underfull child (less than 1/4 used) is merged
+ *    with its sibling or borrows entries from it (see REBALANCING below).
+ *  - A key in a leaf is just removed.
  *  - A key in an inner block is replaced by its predecessor: the last key of
  *    the deepest non-empty block on the right spine of the left subtree
  *    (the subtree to the right of that key is empty). If the left subtree is
@@ -22,7 +24,8 @@
  *
  *  Inner blocks may lose all keys and keep a single child (pointer_0_), so all
  *  leaves stay at the same depth; an empty inner root is dropped (the tree
- *  becomes lower). Nodes are never merged (no rebalancing).
+ *  becomes lower). Such pages come from the files of the older versions
+ *  and from the cases where neither merge nor borrowing fits; they are fixed on later passes.
  *
  *  Crash safety: dirty pages reach the disk only all together, when the cache
  *  evicts a dirty page inside block_create (). So between two block_create ()
@@ -31,8 +34,8 @@
  *  right after another, with both blocks already in the cache.
  */
 //-------------------------------------------------------------------------------------------------------------
-/*  THE CLASSIC CLRS DELETION (the 2015 design, kept for reference: not implemented,
- *  the deletion above is lazy). x - parent, y (lch) and z (rch) - children around key.
+/*  THE CLASSIC CLRS DELETION (the 2015 design). Its rotations and merges are implemented by
+ *  REBALANCING below, measured in bytes. x - parent, y (lch) and z (rch) - children around key.
  *
  *  1. key is in an inner x, y has enough keys: find k - the predecessor of key
  *     in the subtree rooted at y, recursively delete k and replace key in x by k
@@ -138,6 +141,214 @@ static eDBState split_if_full(IN sDB *db, IN uint32_t parent_off, IN uint32_t ch
     *split = true;
     return DONE;
 }
+//-------------------------------------------------------------------------------------------------------------
+/*  REBALANCING
+ *
+ *  Before going down into a child, an underfull child (less than 1/4 of the page payload used)
+ *  is fixed with its sibling through the separator key in the parent, as in CLRS, but measured in bytes:
+ *  - merge, when both fit in one non-full page (used < 3/4): two underfull pages always fit,
+ *    since an entry takes at most 1/8;
+ *  - otherwise borrow: move entries from the sibling through the parent until the child
+ *    has 1/4 used or the sibling would drop below 1/4.
+ *  The caller starts again from the root after a fix, so every page on the path is non-full again.
+ *  All three pages are fetched before the first change: the tree stays valid between page fetches.
+ */
+static uint32_t used_bytes(IN const sBlock *b)
+{
+    return (uint32_t)(b->size_ - sizeof(sDBHB)) - b->head_->free_size_;
+}
+static uint32_t low_bytes(IN const sBlock *b)
+{
+    return (uint32_t)(b->size_ - sizeof(sDBHB)) / 4U;
+}
+static uint32_t entry_bytes(IN sBlock *b, IN const sDBT *k)
+{
+    return (uint32_t)(MYDB_ENTRY_OVERHEAD + k->size + block_key_data(b, k).size);
+}
+/* a copy of a key and its value: the source page memory moves on changes */
+typedef struct
+{
+    void *buf;
+    sDBT key, val;
+} sKV;
+static bool kv_copy(IN sBlock *b, IN const sDBT *k, OUT sKV *kv)
+{
+    sDBT v = block_key_data(b, k);
+    kv->buf = malloc(k->size + v.size + 1U);
+    if (!kv->buf)
+        return false;
+    memcpy(kv->buf, k->data, k->size);
+    memcpy((uchar_t *)kv->buf + k->size, v.data, v.size);
+    kv->key = (sDBT){kv->buf, k->size};
+    kv->val = (sDBT){(uchar_t *)kv->buf + k->size, v.size};
+    return true;
+}
+/* x: ..k.. with children L | R  =>  x: .. ..  L = L k R; R is freed */
+static eDBState merge_children(IN sDB *db, IN sBlock *x, IN sDBT *k, IN sBlock *L, IN sBlock *R)
+{
+    sKV kv;
+    if (!kv_copy(x, k, &kv))
+        return FAIL;
+    bool inner = (*block_type(L) == Pass);
+    uint32_t rused = used_bytes(R);
+    eDBState rc = block_insert(L, &kv.key, &kv.val, NULL, inner ? R->head_->pointer_0_ : MYDB_INVALIDPTR);
+    if (rc == DONE)
+    {
+        memcpy(L->free_, R->data_, rused);
+        L->free_ += rused;
+        L->head_->free_size_ -= rused;
+        *block_nkvs(L) += *block_nkvs(R);
+        rc = block_delete(x, &kv.key, false); /* with its right pointer to R */
+    }
+    if (rc == DONE)
+    {
+        block_write(L);
+        block_write(x);
+        block_trace_dump(L, "merge");
+        block_release(db, R->offset_);
+    }
+    free(kv.buf);
+    return rc;
+}
+/*  Move one entry through the parent: from the first of R into L (to_left) or from the last of L into R.
+ *    x: ..k..          x: ..f..             x: ..k..          x: ..e..
+ *        / \     =>        / \       or         / \     =>        / \
+ *      L    f R        L k    R             L e    R          L      k R
+ */
+static eDBState rotate(IN sBlock *x, IN sDBT *k, IN sBlock *L, IN sBlock *R, IN bool to_left)
+{
+    sBlock *from = to_left ? R : L;
+    sDBT it = {0}, *e = block_key_next(from, &it, NULL), edge = *e;
+    if (!to_left)
+        while ((e = block_key_next(from, e, NULL)))
+            edge = *e;
+    bool inner = (*block_type(L) == Pass);
+    /* the parent has to hold the new separator */
+    if (entry_bytes(from, &edge) > entry_bytes(x, k) + x->head_->free_size_)
+        return FAIL;
+
+    sKV sep, up;
+    if (!kv_copy(x, k, &sep))
+        return FAIL;
+    if (!kv_copy(from, &edge, &up))
+    {
+        free(sep.buf);
+        return FAIL;
+    }
+    uint32_t edge_ptr = block_rptr(from, &edge);
+    eDBState rc;
+    if (to_left)
+    {
+        rc = block_insert(L, &sep.key, &sep.val, NULL, inner ? R->head_->pointer_0_ : MYDB_INVALIDPTR);
+        if (rc == DONE)
+            rc = block_change(x, &up.key, &up.val, k, MYDB_INVALIDPTR); /* keeps the pointer to R */
+        if (rc == DONE)
+        { /* the right pointer of the moved entry becomes the leftmost one of R */
+            rc = block_delete(R, &up.key, inner);
+            if (!inner)
+                R->head_->pointer_0_ = MYDB_INVALIDPTR;
+        }
+    }
+    else
+    {
+        uint32_t r0 = R->head_->pointer_0_;
+        rc = block_insert(R, &sep.key, &sep.val, NULL, inner ? r0 : MYDB_INVALIDPTR);
+        if (rc == DONE)
+        {
+            if (inner)
+                R->head_->pointer_0_ = edge_ptr;
+            rc = block_change(x, &up.key, &up.val, k, MYDB_INVALIDPTR); /* keeps the pointer to R */
+        }
+        if (rc == DONE)
+            rc = block_delete(L, &up.key, false);
+    }
+    free(sep.buf);
+    free(up.buf);
+    return rc;
+}
+/*  Fix the child coff of x, if it is underfull. Returns -1 on error,
+ *  1 if pages were changed (the caller starts again from the root), 0 if nothing was done.
+ */
+static int rebalance_child(IN sDB *db, IN uint32_t xoff, IN uint32_t coff)
+{
+    sBlock *x = block_create(db, xoff);
+    sBlock *c = block_create(db, coff);
+    if (!x || !c || !(x = block_create(db, xoff)))
+        return -1;
+    if (used_bytes(c) >= low_bytes(c) || *block_nkvs(x) == 0U)
+        return 0;
+    //-----------------------------------------
+    /* the separator: the key right of the child, or the last key of x for the very right child */
+    sDBT it = {0}, *k = block_key_next(x, &it, NULL), sep = {0};
+    bool child_left = false;
+    for (; k; k = block_key_next(x, k, NULL))
+    {
+        sep = *k;
+        if (block_lptr(x, k) == coff)
+        {
+            child_left = true;
+            break;
+        }
+    }
+    uint32_t loff = child_left ? coff : block_lptr(x, &sep);
+    uint32_t roff = child_left ? block_rptr(x, &sep) : coff;
+    sKV skv;
+    if (!kv_copy(x, &sep, &skv))
+        return -1;
+    //-----------------------------------------
+    /* fetch all three pages, then change them without fetching */
+    sBlock *L = block_create(db, loff);
+    sBlock *R = block_create(db, roff);
+    if (!L || !R || !(L = block_create(db, loff)) || !(x = block_create(db, xoff)))
+    {
+        free(skv.buf);
+        return -1;
+    }
+    sDBT iter, *kx = block_find_ge(x, &skv.key, &iter);
+    free(skv.buf);
+    if (!kx || block_lptr(x, kx) != loff)
+        return -1;
+    //-----------------------------------------
+    if (used_bytes(L) + used_bytes(R) + entry_bytes(x, kx) < 3U * low_bytes(L))
+    {
+        TRACE(MYDB_TRACE_TREE, "page %u: merge page %u (%u B) and page %u (%u B)", (unsigned)xoff,
+              (unsigned)loff, (unsigned)used_bytes(L), (unsigned)roff, (unsigned)used_bytes(R));
+        return (DONE == merge_children(db, x, kx, L, R)) ? 1 : -1;
+    }
+    //-----------------------------------------
+    sBlock *from = child_left ? R : L, *to = child_left ? L : R;
+    sDBT ix; /* the iterator kx points to */
+    unsigned moved = 0U;
+    while (used_bytes(to) < low_bytes(to) && *block_nkvs(from) > 1U)
+    {
+        sDBT ie = {0}, *e = block_key_next(from, &ie, NULL), edge = *e;
+        if (!child_left)
+            while ((e = block_key_next(from, e, NULL)))
+                edge = *e;
+        if (entry_bytes(from, &edge) > entry_bytes(x, kx) + x->head_->free_size_)
+            break; /* no room in the parent for a longer separator */
+        if (used_bytes(from) < low_bytes(from) + entry_bytes(from, &edge))
+            break; /* the sibling would become underfull */
+        if (DONE != rotate(x, kx, L, R, child_left))
+            return -1;
+        ++moved;
+        /* the separator has changed: find it again by its left child */
+        ix = (sDBT){0};
+        kx = block_key_next(x, &ix, NULL);
+        while (kx && block_lptr(x, kx) != loff)
+            kx = block_key_next(x, kx, NULL);
+        if (!kx)
+            return -1;
+    }
+    if (!moved)
+        return 0;
+    block_write(L);
+    block_write(R);
+    block_write(x);
+    TRACE(MYDB_TRACE_TREE, "page %u: move %u entries from page %u into page %u (%u B used)", (unsigned)xoff,
+          moved, (unsigned)from->offset_, (unsigned)to->offset_, (unsigned)used_bytes(to));
+    return 1;
+}
 /*  Go down the right (want_max) or the left spine of the subtree under x, splitting full blocks.
  *  Returns -1 on error, 1 if a split was made (the caller starts again), 0 when the spine is ready:
  *  *holder is the deepest block of the spine with keys (MYDB_INVALIDPTR - the subtree is empty).
@@ -149,6 +360,9 @@ static int prepare_spine(IN sDB *db, IN uint32_t xoff, IN uint32_t top, IN bool 
     *holder = MYDB_INVALIDPTR;
     for (;;)
     {
+        int rb = rebalance_child(db, parent_off, off);
+        if (rb != 0)
+            return rb;
         bool split = false;
         if (DONE != split_if_full(db, parent_off, off, &split))
             return -1;
@@ -269,6 +483,14 @@ int block_delete_deep(IN sBlock *block, IN const sDBT *key)
         {
             TRACE(MYDB_TRACE_TREE, "page %u inner, %u keys -> child page %u", (unsigned)xoff,
                   (unsigned)*block_nkvs(x), (unsigned)yoff);
+            int rb = rebalance_child(db, xoff, yoff);
+            if (rb < 0)
+                return FAIL;
+            if (rb > 0)
+            {
+                TRACE(MYDB_TRACE_TREE, "pages were rebalanced on the way: start again from the root");
+                return 1;
+            }
             if (DONE != split_if_full(db, xoff, yoff, &split))
                 return FAIL;
             if (split)
