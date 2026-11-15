@@ -11,6 +11,12 @@
 #define _XOPEN_SOURCE 700
 #include <time.h>
 
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <setjmp.h>
+#include <cmocka.h>
+
 #include "mydb_common.h"
 #include "mydb.h"
 
@@ -20,16 +26,7 @@
 #define FILE_A   "w_tree.db"
 #define FILE_B   "w_rebuilt.db"
 
-static int n_failed;
-#define CHECK(cond)                                                                                          \
-    do                                                                                                       \
-    {                                                                                                        \
-        if (!(cond))                                                                                         \
-        {                                                                                                    \
-            ++n_failed;                                                                                      \
-            fprintf(stderr, "%s:%d: CHECK failed: %s\n", __FILE__, __LINE__, #cond);                         \
-        }                                                                                                    \
-    } while (0)
+#define CHECK(cond) assert_true(cond)
 
 static double now(void)
 {
@@ -175,13 +172,15 @@ static void report(const char *name, sDB *db, const sSet *s, size_t page_size, s
     row(name, &a, &b);
 }
 //-------------------------------------------------------------------------------------------------------------
-int main(int argc, char *argv[])
+static size_t n_keys = 20000U;
+
+static void test_worst_cases(void **state)
 {
-    size_t n = (argc > 1) ? (size_t)strtoull(argv[1], NULL, 10) : 20000U;
+    (void)state;
+    size_t n = n_keys;
     const size_t page = 512U, cache = 16U << 20; /* small pages: more levels; the whole tree is cached */
     sSet s = {calloc(n, sizeof(bool)), n};
-    if (!s.present)
-        return EXIT_FAILURE;
+    assert_non_null(s.present);
 
     printf("%zu keys of %u bytes, values of %u bytes, pages of %zu bytes, cache %zu MB.\n", n, KEY_SIZE,
            VAL_SIZE, page, cache >> 20);
@@ -290,7 +289,14 @@ int main(int argc, char *argv[])
     unlink(FILE_B);
     unlink(FILE_B ".log");
     free(s.present);
-    printf("\n%s\n", n_failed ? "FAILED" : "all worst cases passed");
-    return n_failed ? EXIT_FAILURE : EXIT_SUCCESS;
+    printf("\n");
+}
+//-------------------------------------------------------------------------------------------------------------
+int main(int argc, char *argv[])
+{
+    if (argc > 1)
+        n_keys = (size_t)strtoull(argv[1], NULL, 10);
+    const struct CMUnitTest tests[] = {cmocka_unit_test(test_worst_cases)};
+    return cmocka_run_group_tests(tests, NULL, NULL);
 }
 //-------------------------------------------------------------------------------------------------------------

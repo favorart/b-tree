@@ -1,7 +1,7 @@
 # mydb: B-tree key-value storage
 #
 #   make            - build/libmydb.a and build/mydb_demo
-#   make test       - build and run the unit and the integration tests
+#   make test       - build and run the tests (cmocka)
 #   make SAN=1 test - the same with AddressSanitizer + UndefinedBehaviorSanitizer
 #   make bench      - throughput benchmark (BENCH_N keys, 200000 by default)
 #   make format     - clang-format the sources
@@ -20,6 +20,10 @@ ifeq ($(SAN),1)
   override CFLAGS  += -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all
   override LDFLAGS += -fsanitize=address,undefined
 endif
+
+# the tests use cmocka from the system (apt: libcmocka-dev, brew: cmocka)
+CMOCKA_CFLAGS ?= $(shell pkg-config --cflags cmocka 2>/dev/null)
+CMOCKA_LIBS   ?= $(shell pkg-config --libs cmocka 2>/dev/null || echo -lcmocka)
 
 BUILD   := build
 SOURCES := $(wildcard src/*.c)
@@ -44,7 +48,7 @@ $(BUILD)/%.o: examples/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: tests/%.c $(HEADERS) | $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CMOCKA_CFLAGS) -c $< -o $@
 
 $(BUILD)/%.o: bench/%.c $(HEADERS) | $(BUILD)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -53,7 +57,7 @@ $(BUILD)/mydb_demo: $(BUILD)/demo.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 $(BUILD)/test_%: $(BUILD)/test_%.o $(LIB)
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(CC) $(LDFLAGS) -o $@ $^ $(CMOCKA_LIBS)
 
 # the tests create their database files in build/
 test: $(BUILD)/test_units $(BUILD)/test_mydb $(BUILD)/test_worst
