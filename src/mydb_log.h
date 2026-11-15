@@ -15,11 +15,15 @@ typedef enum
     LOG_CHKPNT
 } mydb_log_enum;
 //-------------------------------------------------------------------------------------------------------------
-/* Open the journal file for writing or reading and return the journal object */
-sLog *mydb_log_open(IN bool trunc);
+/* open the journal "<db_file>.log" for reading and appending */
+sLog *mydb_log_open(IN const char *db_file, IN bool trunc);
 void mydb_log_close(IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
-void mydb_logging(IN sDB *db, IN mydb_log_enum type, IN const sDBT *key, IN const sDBT *val);
+/* Append a record before the operation is applied (write-ahead). 0 on success */
+int mydb_logging(IN sDB *db, IN mydb_log_enum type, IN const sDBT *key, IN const sDBT *val);
+/* All pages are on disk: drop the journal and start it with a checkpoint record. 0 on success */
+int mydb_log_checkpoint(IN sDB *db);
+/* Replay the operations after the last checkpoint. true on error */
 bool mydb_recover(IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_LOG_H_

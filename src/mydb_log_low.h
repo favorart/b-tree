@@ -4,28 +4,28 @@
 #ifndef _MYDB_LOG_LOW_H_
 #define _MYDB_LOG_LOW_H_
 //-------------------------------------------------------------------------------------------------------------
-/* The journal (Write Ahead Log) keeps the history of changes of the database blocks */
-typedef struct Logging sLog;
+/* The journal (write-ahead log) keeps the history of operations */
 struct Logging
 {
-    const char *filename;
+    char *filename;
     HFILE fd;
     //------------------
     uint64_t lsn;
-    uint_t n_recover;
 };
-/*   Every journal record contains the record number (LSN) - a monotonically increasing
- *   record counter, the operation type (insert / replace / delete), the key-value pair
- *   or only the key (for delete).
- *   The journal also needs special records for the events: checkpoint,
- *   opening and closing of the database. The format of these records is defined separately.
+/*   Every record has a log sequence number (LSN, a monotonically increasing
+ *   counter), the type of the operation (insert / delete / checkpoint) and the
+ *   key-value pair (only the key for delete). Numbers are in the native byte order.
  *
- *      +------+-------+-----+-----+-----+-----+----------+
- *      | type |  LSN  | ksz | vsz | key | val | LogRecSz | values
- *      +------+-------+-----+-----+-----+-----+----------+
- *      | char | int64 |int32|int32| ksz | vsz | uint32_t | sizes
- *      +------+-------+-----+-----+-----+-----+----------+
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *      | type | ksz | vsz |  LSN  | key | val | checksum | values
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *      |  u32 | u32 | u32 |  u64  | ksz | vsz |   u32    | sizes
+ *      +------+-----+-----+-------+-----+-----+----------+
+ *
+ *   checksum is FNV-1a of all the previous bytes of the record:
+ *   a torn record at the tail (crash during write) is detected and ignored.
  */
+#define MYDB_LOG_HEAD_SIZE 20U
 //-------------------------------------------------------------------------------------------------------------
 typedef struct LogRecord sLogRec;
 struct LogRecord
@@ -34,21 +34,14 @@ struct LogRecord
     uint64_t lsn;
     //------------------
     sDBT key, val;
-    //------------------
-    uint32_t size;
+    void *buf; // malloc'ed storage of key and val (on read)
 };
 //-------------------------------------------------------------------------------------------------------------
-/* Write a log record to the journal. */
+/* append a record to the journal. true on error */
 bool mydb_log_write(IN sLog *log, IN sLogRec *record);
-/* Move the read position to the last checkpoint of the journal */
-bool mydb_log_seek(IN sLog *log);
 //-------------------------------------------------------------------------------------------------------------
-/* Read the current record from the journal and move the read position */
+/* read the record at the current position and move on. NULL at the end or at a torn record */
 sLogRec *mydb_log_record_next(IN sLog *log);
 void mydb_log_record_free(IN sLogRec *record);
-//-------------------------------------------------------------------------------------------------------------
-#ifdef _DEBUG_LOG
-void mydb_log_print(IN sLog *log, sLogRec *record);
-#endif // _DEBUG_LOG
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_LOG_LOW_H_

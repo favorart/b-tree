@@ -1,8 +1,8 @@
 #include "stdafx.h"
 #include "mydb_error.h"
 
+//-------------------------------------------------------------------------------------------------------------
 e_mydb_err mydb_errno = MYDB_ERR_NONE;
-
 //-------------------------------------------------------------------------------------------------------------
 const char *strmyerror(e_mydb_err err)
 {
@@ -15,13 +15,13 @@ const char *strmyerror(e_mydb_err err)
         break;
 
     case MYDB_ERR_FPARAM:
-        strerr = ": Incorect parameter to function.";
+        strerr = ": Incorrect parameter to function.";
         break;
     case MYDB_ERR_FNEXST:
-        strerr = ": mydb file is not exist on disk.";
+        strerr = ": mydb file does not exist on disk.";
         break;
     case MYDB_ERR_BWRITE:
-        strerr = ": Writing block to disk is fault.";
+        strerr = ": Writing block to disk failed.";
         break;
     case MYDB_ERR_OFFSET:
         strerr = ": Invalid offset for disk action.";
@@ -34,6 +34,15 @@ const char *strmyerror(e_mydb_err err)
         break;
     case MYDB_ERR_CCHSET:
         strerr = ": Fault inserting block to cache.";
+        break;
+    case MYDB_ERR_KVSIZE:
+        strerr = ": Key-value pair is too large.";
+        break;
+    case MYDB_ERR_FORMAT:
+        strerr = ": Not a mydb file (bad header).";
+        break;
+    case MYDB_ERR_LOGWRT:
+        strerr = ": Writing the journal failed.";
         break;
     }
     //-----------------------------------------

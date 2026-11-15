@@ -4,392 +4,301 @@
 #include "mydb_techb.h"
 
 //-------------------------------------------------------------------------------------------------------------
-typedef struct childs_list sChList;
-struct childs_list
-{
-    struct Block *parent;
-    struct Block *lchild;
-    struct Block *rchild;
-    //------------------------
-    struct childs_list *next;
-};
-
-void childs_list_free(sChList *head)
-{
-    for (sChList *ch_list = head; ch_list; ch_list = head)
-    {
-        head = ch_list->next;
-        //----------------------------------
-        if (ch_list->next)
-        {
-            if (ch_list->next->parent == ch_list->lchild)
-                ch_list->lchild = NULL;
-            else
-                ch_list->rchild = NULL;
-        }
-        //----------------------------------
-        block_destroy(ch_list->parent);
-        block_destroy(ch_list->lchild);
-        block_destroy(ch_list->rchild);
-        //----------------------------------
-        free(ch_list);
-    }
-}
-
-// recursive descent
-bool block_recursive_descent(IN sBlock *parent, IN sBlock *lchild, IN sBlock *rchild, IN const sDBT *key,
-                             bool is_right);
-
-eDBState block_deep_del(IN sBlock *block, IN const sDBT *key)
-{
-    const char *error_prefix = "memory block deep delete";
-    eDBState result = DONE;
-    /*-----------------------------------------
-  *   while ( *block_type (parent) != Leaf )
-  *   {
-  *     if ( block_select_data (parent, key) && block_enough (rchild) )
-  *     {
-  *       block_recursive_descent (parent, lchild, rchild); // EXCESS
-  *       parent = rchild;
-  *     }
-  *     else if ( block_enough (lchild) ) // EXCESS
-  *     {
-  *       block_recursive_descent (parent, lchild, rchild);
-  *       parent = lchild;
-  *     }
-  *     else
-  *     {
-  *       block_merge (parent, lchild, rchild); // ROTATE RIGHT if choosen first case
-  *       parent = lchild;
-  *     }
-  *   }
-  *-----------------------------------------*/
-
-    //-----------------------------------------
-    sChList *rec_list = NULL, *rec_list_head = NULL;
-    //-----------------------------------------
-    rec_list_head = calloc(1U, sizeof(*rec_list_head));
-    if (!rec_list_head)
-    {
-        fprintf(stderr, "%s%s", error_prefix, strerror(errno));
-        result = FAIL;
-        goto DDEL_FREE;
-    }
-    //-----------------------------------------
-    rec_list_head->parent = block;
-
-    sBlock *match = NULL;
-    sDBT *kkey = NULL;
-    bool is_right = true;
-
-    bool k_left;
-    bool k_rght;
-    //-----------------------------------------
-    rec_list = rec_list_head;
-    while (*block_type(rec_list->parent) != Leaf)
-    {
-        //-----------------------------------------
-        if (!match)
-        {
-            sDBT iter = {0}, *prev_k = NULL;
-            sDBT *k = block_key_next(rec_list->parent, &iter, NULL);
-            while (k && key_compare(k, key) < 0)
-            {
-                prev_k = k;
-                k = block_key_next(rec_list->parent, k, NULL);
-            }
-
-            if (!k)
-            {
-                is_right = true;
-                kkey = prev_k;
-            }
-            else
-            {
-                is_right = false;
-                kkey = k;
-            }
-            if (!kkey)
-            {
-                fprintf(stderr, "%s%s", error_prefix, strmyerror(MYDB_ERR_FPARAM));
-                result = FAIL;
-                goto DDEL_FREE;
-            }
-        }
-        //-----------------------------------------
-        rec_list->lchild = block_create(rec_list->parent->owner_db_, *block_lptr(rec_list->parent, kkey));
-        rec_list->rchild = block_create(rec_list->parent->owner_db_, *block_rptr(rec_list->parent, kkey));
-        //-----------------------------------------
-        rec_list->next = calloc(1U, sizeof(*rec_list));
-        if (!rec_list->next)
-        {
-            fprintf(stderr, "%s%s", error_prefix, strerror(errno));
-            result = FAIL;
-            goto DDEL_FREE;
-        }
-        //-----------------------------------------
-        if (!key_compare(kkey, key) && block_enough(rec_list->rchild))
-        {
-            /* Question is only when (k == key), else there are not questions */
-            // is_right = false;
-
-            match = rec_list->parent;
-            // block_recursive_descent // EXCESS
-            rec_list->parent = rec_list->rchild;
-        }
-        else
-        {
-            block_recursive_descent(rec_list->parent, rec_list->lchild, rec_list->rchild, key, is_right);
-            rec_list->parent = (is_right) ? rec_list->rchild : rec_list->lchild;
-        }
-        //-----------------------------------------
-        rec_list = rec_list->next;
-        //-----------------------------------------
-    }
-    //-----------------------------------------
-    if (!match)
-    {
-        sDBT iter = {0};
-        sDBT *k = block_key_next(rec_list->parent, &iter, NULL);
-        while (k && key_compare(k, key) < 0)
-        {
-            k = block_key_next(rec_list->parent, k, NULL);
-        }
-
-        if (!key_compare(k, key))
-        {
-            // block_delete (rec_list->parent, key);
-        }
-        else
-        {
-            result = FAIL;
-        }
-    }
-    else // match!
-    {
-        sDBT iter = {0}, *prev_k = NULL;
-        sDBT *k = block_key_next(rec_list->parent, &iter, NULL);
-        while (k && key_compare(k, key) < 0)
-        {
-            prev_k = k;
-            k = block_key_next(rec_list->parent, k, NULL);
-        }
-        kkey = k ? k : prev_k;
-
-        sDBT val = block_key_data(block, kkey);
-        // block_change (match, key, &val, kkey);
-        // block_delete (rec_list->parent, kkey);
-    }
-    //-----------------------------------------
-DDEL_FREE:;
-    rec_list_head->parent = NULL;
-    childs_list_free(rec_list_head);
-    rec_list_head = NULL;
-    //-----------------------------------------
-    return DONE;
-}
+/*  DELETION
+ *
+ *  Keys and values have variable length, so the classic CLRS deletion with
+ *  "at least t-1 keys in a node" does not apply directly. A lazy variant is used:
+ *
+ *  - The path from the root is kept non-full exactly as in insertion: a full
+ *    child is split before going down. A non-full block has room to accept a
+ *    median key and to grow one of its entries (see block_max_entry).
+ *  - A key in a leaf is just removed; leaves may become underfull or empty.
+ *  - A key in an inner block is replaced by its predecessor: the last key of
+ *    the deepest non-empty block on the right spine of the left subtree
+ *    (the subtree to the right of that key is empty). If the left subtree is
+ *    empty, the successor from the right subtree is taken symmetrically.
+ *  - If both neighbour subtrees are empty, the key and its right subtree are removed.
+ *
+ *  Inner blocks may lose all keys and keep a single child (pointer_0_), so all
+ *  leaves stay at the same depth; an empty inner root is dropped (the tree
+ *  becomes lower). Nodes are never merged (no rebalancing).
+ *
+ *  Crash safety: dirty pages reach the disk only all together, when the cache
+ *  evicts a dirty page inside block_create (). So between two block_create ()
+ *  calls the tree must be valid. Splits keep it valid; the two changes of a
+ *  replacement (the key in x and the neighbour in its block) are made one
+ *  right after another, with both blocks already in the cache.
+ */
 //-------------------------------------------------------------------------------------------------------------
-bool block_recursive_descent(IN sBlock *parent, IN sBlock *lchild, IN sBlock *rchild, IN const sDBT *key,
-                             bool is_right)
-{
-    const char *error_prefix = "memory block recursive descent";
-    bool is_fail = false;
-    //-----------------------------------------
-    // rotate left
-    if (!block_enough(lchild) && block_enough(rchild))
-    {
-        /*-----------------------------------------
-     *  find k - the predecessor of key in the subtree
-     *  rooted at lchild. Recursively
-     *  delete k and replace key in parent by k.
-     *  (k is found in one pass down)
-     *
-     *  par: ..key..      par: ..(key<-k)..
-     *        /   \    =>       /        \
-     *     lch     rch       lch<-key  k<-rch
-     *------------------------------------------*/
-        sDBT iter = {0};
-        sDBT *k = block_key_next(parent, &iter, NULL);
-        sDBT val = block_key_data(parent, k);
-
-        block_insert(lchild, k, &val, NULL, MYDB_INVALIDPTR);
-        // block_delete (parent, k); // MOVING!!!
-
-        k = block_key_next(rchild, &iter, NULL);
-        val = block_key_data(rchild, k);
-
-        block_insert(parent, k, &val, NULL, MYDB_INVALIDPTR);
-        // block_delete (rchild, k);
-    }
-    //-----------------------------------------
-    // rotate right
-    if (block_enough(lchild) && !block_enough(rchild))
-    {
-        /*-----------------------------------------
-     *   find k - the key following key in the subtree
-     *   rooted at rchild. Recursively
-     *   delete k and replace key in parent by k.
-     *   (k is found in one pass down)
-     *
-     *   (symmetrically, look at the child
-     *    rchild of parent, that follows the key
-     *    in parent)
-     *
-     *  par: ..key..      par: ..(k->key)..
-     *        /   \    =>       /        \
-     *     lch     rch       lch->k  key->rch
-     *-----------------------------------------*/
-    }
-    //-----------------------------------------
-    // merge to left
-    else if (!block_enough(lchild) && !block_enough(rchild))
-    {
-        /*-----------------------------------------
-     *  par: ..k..        par: .....
-     *        / \      =>       /
-     *     lch   rch           (lch)k(rch)
-     *-----------------------------------------*/
-        block_merge_child(parent, lchild, rchild, key);
-    }
-    //----------------------------
-    return is_fail;
-}
+/*  THE CLASSIC CLRS DELETION (the 2015 design, kept for reference: not implemented,
+ *  the deletion above is lazy). x - parent, y (lch) and z (rch) - children around key.
+ *
+ *  1. key is in an inner x, y has enough keys: find k - the predecessor of key
+ *     in the subtree rooted at y, recursively delete k and replace key in x by k
+ *     (k is found in one pass down).
+ *
+ *       x: ..key..      x: ..(key<-k)..
+ *           /   \   =>       /   \
+ *          y     z       k<-y     z
+ *
+ *  2. symmetrically, look at the child z of x, that follows the key in x:
+ *     z has enough keys - find k, the key following key in the subtree rooted at z,
+ *     recursively delete k and replace key in x by k.
+ *
+ *  3. both y and z have not enough keys - merge them with key:
+ *
+ *       x : ..k..      x : .....
+ *            / \    =>      /
+ *           y   z         ykz
+ *
+ *  On the way down to a child without enough keys (a key not in x):
+ *
+ *  rotate left (borrow from the right sibling):
+ *
+ *       par: ..key..      par: ..(key<-k)..
+ *             /   \    =>       /        \
+ *          lch     rch       lch<-key  k<-rch
+ *
+ *  rotate right (borrow from the left sibling):
+ *
+ *       par: ..key..      par: ..(k->key)..
+ *             /   \    =>       /        \
+ *          lch     rch       lch->k  key->rch
+ *
+ *  merge, when both siblings have not enough keys:
+ *
+ *       par: ..k..        par: .....
+ *             / \      =>       /
+ *          lch   rch           (lch)k(rch)
+ *
+ *  One pass down without recursion:
+ *
+ *    while ( *block_type (parent) != Leaf )
+ *    {
+ *      if ( block_select_data (parent, key) && block_enough (rchild) )
+ *      {
+ *        block_recursive_descent (parent, lchild, rchild); // EXCESS
+ *        parent = rchild;
+ *      }
+ *      else if ( block_enough (lchild) ) // EXCESS
+ *      {
+ *        block_recursive_descent (parent, lchild, rchild);
+ *        parent = lchild;
+ *      }
+ *      else
+ *      {
+ *        block_merge (parent, lchild, rchild); // ROTATE RIGHT if choosen first case
+ *        parent = lchild;
+ *      }
+ *    }
+ *
+ *  Rotations and merges change three pages per step and need a minimal fill of a page;
+ *  with variable-length entries "enough" has to be measured in bytes, not in keys.
+ */
 //-------------------------------------------------------------------------------------------------------------
-bool block_recursively_delete_key_in_left_branch(IN sBlock *parent, IN sBlock *ychild, IN const sDBT *key)
+/* first key in the block that is greater or equal to the given one */
+static sDBT *block_find_ge(IN sBlock *block, IN const sDBT *key, OUT sDBT *iter)
 {
-    const char *error_prefix = "memory block left branch";
-    bool fail = false;
-    //-----------------------------------------
-//  sBlock *cur_child;
-//
-//  sChList  *l_child = NULL, **l_head = &l_child;
-//
-//  sDBT iter = { 0 };
-//  sDBT   *k = block_key_next (ychild, &iter, NULL);
-//  /* Find last right key in left Leaf, that less the given key */
-//  while ( k && key_compare (k, key) > 0 )
-//  {
-//    k = block_key_next (ychild, k, NULL);
-//  }
-//
-//  cur_child = ychild;
-//  /* instead of recursion using loop */
-//  while ( l_child && (*block_type (l_child->block)) != Leaf )
-//  {
-//    if ( l_child )
-//      l_child = l_child->next;
-//    //-----------------------------------------
-//    if ( !(l_child = calloc (1U, sizeof (*l_child))) )
-//    {
-//      fprintf (stderr, "%s%s", error_prefix, strerror (errno));
-//      fail = true;
-//      goto LBRANCH_FREE;
-//    }
-//    //-----------------------------------------
-//    l_child->block = block_create (cur_child->owner_db_, *block_rptr (cur_child, k));
-//    //-----------------------------------------
-//    cur_child = l_child->block;
-//    /* move to the last k (key) in current block, ohhh */
-//    iter.size = 0U;
-//    k = block_key_next (cur_child, &iter, NULL);
-//    uint_t count = *block_nkvs (cur_child);
-//    while ( count-- )
-//    {
-//      k = block_key_next (cur_child, &iter, NULL);
-//    }
-//    //-----------------------------------------
-//  } // end while recursion
-//
-//    // {
-//    //   sDBT *k_value = { 0 };
-//    //   // block_key_data (cur_child, k, &k_value); <-- malloc'ed
-//    //   uint_t vsz = ((uint_t*) k->data - 1U);
-//    //
-//    //   block_delete (cur_child, k);
-//    // }
-//
-//
-//    // block_delete (block, key);
-//    // block_insert (block, k, value);
-//    // x[key] = x[k]
-//-----------------------------------------
-LBRANCH_FREE:;
-    //  childs_list_free (*l_head);
-    //-----------------------------------------
-    return fail;
-}
-bool block_recursively_delete_key_in_rght_branch(IN sBlock *parent, IN sBlock *zchild, IN const sDBT *key)
-{
-    const char *error_prefix = "memory block right branch";
-    bool fail = false;
-    //-----------------------------------------
-//  sBlock *cur_child = NULL;
-//
-//  sChList  *l_child = NULL, **l_head = &l_child;
-//  //-----------------------------------------
-//  sDBT iter = { 0 };
-//  sDBT   *k = block_key_next (zchild, &iter, NULL);
-//  while ( k && key_compare (k, key) < 0 )
-//  {
-//    k = block_key_next (zchild, k, NULL);
-//  }
-//  //-----------------------------------------
-//  if ( (*block_type (zchild)) == Leaf )
-//  {
-//    sDBT val = { 0 };
-//    val.size = block_key_data (zchild, k, &val.data);
-//    //-----------------------------------------------
-//    block_delete (zchild, k);
-//    // ?!?!?! Get k value - ThatS RECURSION
-//  }
-//  else
-//  {
-//    block_recursively_delete_key_in_rght_branch (parent, zchild, key);
-//  }
-//  // block_delete (parent, key);
-//  // block_insert (parent, k, value);
-//  // x[key] = x[k]
-//-----------------------------------------
-RBRANCH_FREE:;
-    //  childs_list_free (*l_head);
-    //-----------------------------------------
-    return fail;
-}
-//-------------------------------------------------------------------------------------------------------------
-eDBState block_rotate_left(IN sBlock *block, IN sDBT *key)
-{
-
-    // get last
-
-    // sDBT  iter = { 0 }, val = { 0 };
-    // sDBT  *k = block_key_next (parent, &iter, NULL);
-    // val.size = block_key_data (parent, &iter, &val);
-
-    sDBT iter = {0}, *k_prev = NULL;
-    sDBT *k = block_key_next(block, &iter, NULL);
-    while (k && key_compare(key, k) < 0)
+    memset(iter, 0, sizeof(*iter));
+    sDBT *k = block_key_next(block, iter, NULL);
+    while (k && key_compare(k, key) < 0)
     {
         k = block_key_next(block, k, NULL);
-        k_prev = k;
     }
-
-    sDBT val = block_key_data(block, k_prev);
-
-    return DONE;
+    return k;
 }
-eDBState block_rotate_rght(IN sBlock *block, IN sBlock *lchild, IN sBlock *rchild, IN const sDBT *key)
+/* the last (want_last) or the first key of a non-empty block */
+static sDBT block_edge_key(IN sBlock *block, IN bool want_last)
 {
-    sDBT cur_k = {0}, value = {0};
+    sDBT iter = {0}, edge;
+    sDBT *k = block_key_next(block, &iter, NULL);
+    edge = *k;
+    if (want_last)
+        while ((k = block_key_next(block, k, NULL)))
+            edge = *k;
+    return edge;
+}
+/* split the child, if it is full; returns FAIL on error, *split = true when splitted */
+static eDBState split_if_full(IN sDB *db, IN uint32_t parent_off, IN uint32_t child_off, OUT bool *split)
+{
+    *split = false;
+    sBlock *child = block_create(db, child_off);
+    if (!child)
+        return FAIL;
+    if (!block_isfull(child))
+        return DONE;
 
-    // get first
-    if (DONE != block_select(block, key, &cur_k, &value))
+    sBlock *parent = block_create(db, parent_off);
+    sBlock *sibling = block_create(db, MYDB_OFFSET2NEW);
+    if (!parent || !sibling || !(child = block_create(db, child_off)) ||
+        DONE != block_split_child(parent, child, sibling))
         return FAIL;
 
-    // sBlock *lchild = block_create (block, block_lptr (block, &cur_k));
-    // sBlock *rchild = block_create (block, block_rptr (block, &cur_k));
-
-    // block_change ();
-
+    *split = true;
     return DONE;
+}
+/*  Go down the right (want_max) or the left spine of the subtree under x, splitting full blocks.
+ *  Returns -1 on error, 1 if a split was made (the caller starts again), 0 when the spine is ready:
+ *  *holder is the deepest block of the spine with keys (MYDB_INVALIDPTR - the subtree is empty).
+ */
+static int prepare_spine(IN sDB *db, IN uint32_t xoff, IN uint32_t top, IN bool want_max,
+                         OUT uint32_t *holder)
+{
+    uint32_t parent_off = xoff, off = top;
+    *holder = MYDB_INVALIDPTR;
+    for (;;)
+    {
+        bool split = false;
+        if (DONE != split_if_full(db, parent_off, off, &split))
+            return -1;
+        if (split)
+            return 1;
+
+        sBlock *b = block_create(db, off);
+        if (!b)
+            return -1;
+        if (*block_nkvs(b))
+            *holder = off;
+        if (*block_type(b) == Leaf)
+            return 0;
+
+        parent_off = off;
+        off = want_max ? block_lptr(b, NULL) : block_rptr(b, NULL);
+    }
+}
+/* free the blocks of an empty subtree: a chain of inner blocks without keys and an empty leaf */
+static void release_empty_subtree(IN sDB *db, IN uint32_t off)
+{
+    while (off != MYDB_INVALIDPTR)
+    {
+        sBlock *b = block_create(db, off);
+        if (!b)
+            return;
+        uint32_t next = (*block_type(b) == Pass) ? b->head_->pointer_0_ : MYDB_INVALIDPTR;
+        block_release(db, off);
+        off = next;
+    }
+}
+//-------------------------------------------------------------------------------------------------------------
+/* replace the key in x by the edge key of the holder block; both blocks are valid now */
+static eDBState replace_by_neighbour(IN sDB *db, IN uint32_t xoff, IN const sDBT *key, IN uint32_t holder,
+                                     IN bool by_successor)
+{
+    sBlock *h = block_create(db, holder);
+    sBlock *x = block_create(db, xoff);
+    if (!h || !x || !(h = block_create(db, holder)))
+        return FAIL;
+    //-----------------------------------------
+    sDBT iter, *k = block_find_ge(x, key, &iter);
+    if (!k || key_compare(k, key))
+        return FAIL;
+
+    sDBT edge = block_edge_key(h, !by_successor);
+    sDBT val = block_key_data(h, &edge);
+    /* the empty subtree on the far side of the neighbour */
+    uint32_t side = MYDB_INVALIDPTR;
+    if (*block_type(h) == Pass)
+        side = by_successor ? block_lptr(h, &edge) : block_rptr(h, &edge);
+
+    /* copy: block_change () moves the memory of x, not of h, but be safe */
+    void *buf = malloc(edge.size + val.size + 1U);
+    if (!buf)
+        return FAIL;
+    memcpy(buf, edge.data, edge.size);
+    memcpy((uchar_t *)buf + edge.size, val.data, val.size);
+    sDBT nkey = {buf, edge.size}, nval = {(uchar_t *)buf + edge.size, val.size};
+    //-----------------------------------------
+    /*   x: ..key..      x: ..(key<-k)..
+   *       /   \   =>       /   \
+   *      y     z       k<-y     z
+   */
+    eDBState result = FAIL;
+    if (DONE == block_change(x, &nkey, &nval, k, MYDB_INVALIDPTR) &&
+        DONE == block_delete(h, &nkey, by_successor))
+    {
+        block_write(x);
+        block_write(h);
+        result = DONE;
+    }
+    free(buf);
+    //-----------------------------------------
+    if (result == DONE)
+        release_empty_subtree(db, side);
+    return result;
+}
+//-------------------------------------------------------------------------------------------------------------
+/*  block is the non-full root. Returns 0 - deleted, -1 - not found or error,
+ *  1 - a block was split on the way: the caller must make the root non-full and call again
+ *  (so every block on the path has a room for the key replacement).
+ */
+int block_delete_deep(IN sBlock *block, IN const sDBT *key)
+{
+    sDB *db = block->owner_db_;
+    uint32_t xoff = block->offset_;
+    bool split = false;
+    //-----------------------------------------
+    for (;;)
+    {
+        sBlock *x = block_create(db, xoff);
+        if (!x)
+            return FAIL;
+
+        sDBT iter, *k = block_find_ge(x, key, &iter);
+        bool hit = (k && !key_compare(k, key));
+        //-----------------------------------------
+        if (*block_type(x) == Leaf)
+        {
+            if (!hit || DONE != block_delete(x, key, false))
+                return FAIL; /* not found */
+            block_write(x);
+            return 0;
+        }
+        //-----------------------------------------
+        uint32_t yoff = block_lptr(x, k);
+        if (!hit)
+        {
+            if (DONE != split_if_full(db, xoff, yoff, &split))
+                return FAIL;
+            if (split)
+                return 1;
+            xoff = yoff;
+            continue;
+        }
+        //-----------------------------------------
+        /* The key is in the inner block x: the predecessor */
+        uint32_t holder;
+        int rc = prepare_spine(db, xoff, yoff, true, &holder);
+        if (rc < 0)
+            return FAIL;
+        if (rc > 0)
+            return 1;
+        if (holder != MYDB_INVALIDPTR)
+            return (DONE == replace_by_neighbour(db, xoff, key, holder, false)) ? 0 : -1;
+        //-----------------------------------------
+        /* the left subtree is empty: the successor */
+        if (!(x = block_create(db, xoff)))
+            return FAIL;
+        k = block_find_ge(x, key, &iter);
+        uint32_t zoff = block_rptr(x, k);
+
+        rc = prepare_spine(db, xoff, zoff, false, &holder);
+        if (rc < 0)
+            return FAIL;
+        if (rc > 0)
+            return 1;
+        if (holder != MYDB_INVALIDPTR)
+            return (DONE == replace_by_neighbour(db, xoff, key, holder, true)) ? 0 : -1;
+        //-----------------------------------------
+        /* both subtrees are empty: remove the key with its right subtree */
+        if (!(x = block_create(db, xoff)))
+            return FAIL;
+        k = block_find_ge(x, key, &iter);
+        zoff = block_rptr(x, k);
+        if (DONE != block_delete(x, key, false))
+            return FAIL;
+        block_write(x);
+        release_empty_subtree(db, zoff);
+        return 0;
+    }
 }
 //-------------------------------------------------------------------------------------------------------------

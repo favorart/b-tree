@@ -9,14 +9,14 @@ eDBState block_read(IN sBlock *block);
 eDBState block_seek(IN sBlock *block);
 eDBState block_dump(IN sBlock *block);
 
-#ifdef MYDB_NOCACHE
-#define block_write block_dump
-#else // !MYDB_NOCACHE
-#define block_write(block) ((block)->dirty_ = true, DONE)
-#endif // !MYDB_NOCACHE
+/* write-back cache: only mark the page dirty, block_dump () writes it later */
+static inline eDBState block_write(IN sBlock *block)
+{
+    block->dirty_ = true;
+    return DONE;
+}
 //-------------------------------------------------------------------------------------------------------------
 /* !!! non-malloc'ed output */
-eDBState block_select(IN sBlock *block, IN const sDBT *key, OUT sDBT *value, OUT sDBT *bkey);
 eDBState block_change(IN sBlock *block, IN const sDBT *key, IN const sDBT *value, IN OUT sDBT *bkey,
                       IN uint_t Rptr);
 eDBState block_insert(IN sBlock *block, IN const sDBT *key, IN const sDBT *value, OUT sDBT *bkey,
@@ -28,8 +28,5 @@ sDBT block_key_data(IN sBlock *block, IN const sDBT *key);
 #ifdef _DEBUG
 int block_print_dbg(IN sBlock *block, IN const char *name);
 #endif // _DEBUG
-//-------------------------------------------------------------------------------------------------------------
-bool block_recursively_delete_key_in_left_branch(IN sBlock *parent, IN sBlock *ychild, IN const sDBT *key);
-bool block_recursively_delete_key_in_rght_branch(IN sBlock *parent, IN sBlock *zchild, IN const sDBT *key);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_BLOCK_LOW_H_
