@@ -94,7 +94,7 @@ sLogRec *mydb_log_record_next(IN sLog *log)
     uint32_t type = mydb_rd32(head + 0U);
     uint32_t ksz = mydb_rd32(head + 4U);
     uint32_t vsz = mydb_rd32(head + 8U);
-    if (type > LOG_CHKPNT || ksz > (1U << 30) || vsz > (1U << 30))
+    if (type > LOG_ABORT || ksz > (1U << 30) || vsz > (1U << 30))
         return NULL; /* garbage */
     //-----------------------------------
     sLogRec *record = (sLogRec *)calloc(1U, sizeof(*record));
@@ -154,6 +154,7 @@ int mydb_logging(IN sDB *db, IN mydb_log_enum type, IN const sDBT *key, IN const
         TRACE(MYDB_TRACE_PAGES, "journal: LSN %llu %s %s", (unsigned long long)db->log_->lsn + 1U,
               (type == LOG_INSERT)   ? "insert"
               : (type == LOG_DELETE) ? "delete"
+              : (type == LOG_ABORT)  ? "abort"
                                      : "checkpoint",
               key ? mydb_trace_key(key->data, key->size, buf) : "");
     }
@@ -217,26 +218,35 @@ bool mydb_recover(IN sDB *db)
     TRACE(MYDB_TRACE_OPS, "recovery: the journal has %llu records, replay after the checkpoint at byte %lld",
           (unsigned long long)lsn, (long long)replay_from);
 
+    /* an operation is applied when the next record is read: an ABORT right after it cancels it */
     lseek(log->fd, replay_from, SEEK_SET);
-    while ((record = mydb_log_record_next(log)))
+    sLogRec *pending = NULL;
+    unsigned long aborted = 0UL;
+    do
     {
-        switch (record->type)
+        record = mydb_log_record_next(log);
+        if (record && record->type == LOG_ABORT)
         {
-        case LOG_INSERT: /* failed the first time (e.g. no free blocks) - fails again */
-            ++replayed;
-            mydb_insert(db, &record->key, &record->val);
-            break;
-        case LOG_DELETE: /* the key may be absent already */
-            ++replayed;
-            mydb_delete(db, &record->key);
-            break;
-        default:
-            break;
+            aborted += (pending != NULL);
+            mydb_log_record_free(pending);
+            mydb_log_record_free(record);
+            pending = NULL;
+            continue;
         }
-        mydb_log_record_free(record);
-    }
+        if (pending && pending->type == LOG_INSERT)
+            mydb_insert(db, &pending->key, &pending->val);
+        else if (pending && pending->type == LOG_DELETE) /* the key may be absent already */
+            mydb_delete(db, &pending->key);
+        replayed += (pending != NULL);
+        mydb_log_record_free(pending);
+        pending = NULL;
+        if (record && (record->type == LOG_INSERT || record->type == LOG_DELETE))
+            pending = record;
+        else
+            mydb_log_record_free(record);
+    } while (record);
     db->replaying_ = false;
-    TRACE(MYDB_TRACE_OPS, "recovery: %lu operations replayed", replayed);
+    TRACE(MYDB_TRACE_OPS, "recovery: %lu operations replayed, %lu failed ones skipped", replayed, aborted);
     //-----------------------------------
     /* write the recovered state and cut a possibly torn tail of the journal */
     return mydb_flush(db) != 0;

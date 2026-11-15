@@ -328,6 +328,16 @@ static void mydb_trace_call(IN const char *what, IN const sDBT *key, IN const sD
                   key->size);
     }
 }
+/*  The journal record of an operation is written before the operation (write-ahead).
+ *  A failed operation gets an ABORT record right after it: recovery must not repeat it,
+ *  the state it would be replayed on may have room for it (deletes after a checkpoint).
+ */
+static int mydb_log_result(IN sDB *db, IN int rc)
+{
+    if (rc && mydb_logging(db, LOG_ABORT, NULL, NULL))
+        TRACE(MYDB_TRACE_OPS, "the abort record is not written: recovery may repeat the failed operation");
+    return rc;
+}
 int mydb_delete(IN sDB *db, IN const sDBT *key)
 {
     if (!mydb_check_key(db, key, NULL))
@@ -342,7 +352,7 @@ int mydb_delete(IN sDB *db, IN const sDBT *key)
     do
     {
         if (mydb_split_root(db, NULL) || !mydb_root(db))
-            return -1;
+            return mydb_log_result(db, -1);
     } while ((rc = block_delete_deep(db->root_, key)) > 0);
     //-----------------------------------------
     /* an inner root without keys has a single child: the tree becomes lower */
@@ -356,7 +366,7 @@ int mydb_delete(IN sDB *db, IN const sDBT *key)
         block_release(db, rb->offset_);
     }
     TRACE(MYDB_TRACE_OPS, "delete %s", rc ? "failed: no such key" : "done");
-    return rc;
+    return mydb_log_result(db, rc);
 }
 int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
 {
@@ -372,13 +382,13 @@ int mydb_insert(IN sDB *db, IN const sDBT *key, IN const sDBT *data)
     {
         mydb_errno = MYDB_ERR_NFREEB; /* the rest is kept for deletes */
         TRACE(MYDB_TRACE_OPS, "insert failed: the free pages are kept for deletes");
-        return -1;
+        return mydb_log_result(db, -1);
     }
-    if (mydb_split_root(db, key) || !mydb_root(db))
-        return -1;
-    int rc = (DONE == block_add_nonfull(db->root_, key, data)) ? 0 : -1;
+    int rc = (mydb_split_root(db, key) || !mydb_root(db) || DONE != block_add_nonfull(db->root_, key, data))
+                 ? -1
+                 : 0;
     TRACE(MYDB_TRACE_OPS, "insert %s", rc ? "failed" : "done");
-    return rc;
+    return mydb_log_result(db, rc);
 }
 int mydb_select(IN sDB *db, IN const sDBT *key, OUT sDBT *data)
 {
