@@ -52,8 +52,8 @@ $(BUILD)/test_%: $(BUILD)/test_%.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
 
 # the tests create their database files in build/
-test: $(BUILD)/test_units $(BUILD)/test_mydb
-	cd $(BUILD) && ./test_units && ./test_mydb
+test: $(BUILD)/test_units $(BUILD)/test_mydb $(BUILD)/test_worst
+	cd $(BUILD) && ./test_units && ./test_mydb && ./test_worst
 
 $(BUILD)/bench_mydb: $(BUILD)/bench_mydb.o $(LIB)
 	$(CC) $(LDFLAGS) -o $@ $^
