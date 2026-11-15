@@ -249,7 +249,7 @@ static void test_split(void)
         sDBT k = S(key);
         CHECK(block_insert(y, &k, &v, NULL, MYDB_INVALIDPTR) == DONE);
     }
-    CHECK(block_split_child(x, y, z) == DONE);
+    CHECK(block_split_child(x, y, z, NULL) == DONE);
     CHECK(*block_nkvs(x) == 1U && *block_type(z) == Leaf);
     CHECK(*block_nkvs(y) + *block_nkvs(z) + 1U == (uint32_t)n);
     /* halves of about the same size */
@@ -267,6 +267,45 @@ static void test_split(void)
     CHECK(!block_isfull(y) && !block_isfull(z));
 }
 //-------------------------------------------------------------------------------------------------------------
+/* sequential inserts: a key beyond the edge of the full block splits it at that edge */
+static void test_split_at_edge(void)
+{
+    for (int ascending = 0; ascending < 2; ++ascending)
+    {
+        sFakeBlock fx, fy, fz;
+        sBlock *x = fake_block(&fx, Pass, 1), *y = fake_block(&fy, Leaf, 2), *z = fake_block(&fz, Leaf, 3);
+        x->head_->pointer_0_ = 2;
+
+        char key[16];
+        uchar_t val[30] = {0};
+        sDBT v = {val, sizeof(val)};
+        int n = 0;
+        while (!block_isfull(y))
+        {
+            snprintf(key, sizeof(key), "k%03d", 100 + n++);
+            sDBT k = S(key);
+            CHECK(block_insert(y, &k, &v, NULL, MYDB_INVALIDPTR) == DONE);
+        }
+        uint32_t used = used_bytes(y);
+        sDBT next = S(ascending ? "k999" : "k000");
+        CHECK(block_split_child(x, y, z, &next) == DONE);
+        CHECK(*block_nkvs(x) == 1U);
+        sDBT it = {0}, *m = block_key_next(x, &it, NULL);
+        if (ascending)
+        { /* everything but the last entry stays, the new keys go to the empty z */
+            CHECK(*block_nkvs(y) == (uint32_t)n - 1U && *block_nkvs(z) == 0U);
+            CHECK(m && !memcmp(m->data, key, m->size));
+            CHECK(used_bytes(y) + MYDB_ENTRY_OVERHEAD + 4U + sizeof(val) == used);
+        }
+        else
+        { /* the first entry goes up, the rest to z, y is empty */
+            CHECK(*block_nkvs(y) == 0U && *block_nkvs(z) == (uint32_t)n - 1U);
+            CHECK(m && !memcmp(m->data, "k100", m->size));
+        }
+        CHECK(key_compare(&next, m) == (ascending ? 1 : -1));
+        CHECK(block_lptr(x, m) == 2 && block_rptr(x, m) == 3);
+    }
+}
 static sDB *small_db(const char *name, size_t db_size)
 {
     sDBC conf = {db_size, PAGE, 1}; /* the smallest cache */
@@ -697,6 +736,7 @@ int main(void)
     RUN(test_page_pointers);
     RUN(test_page_change_no_room);
     RUN(test_split);
+    RUN(test_split_at_edge);
     RUN(test_bitmap);
     RUN(test_cache_lru);
     RUN(test_cache_writeback);
