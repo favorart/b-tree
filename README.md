@@ -160,17 +160,28 @@ and the next keys fill the new empty page.
 
 ### Deletion
 
-Deletion follows the same rule "every page on the path is non-full" and never merges pages:
+Deletion follows the same rule "every page on the path is non-full" and rebalances on the way down:
 
-- a key in a leaf is removed, the leaf may become underfull or empty;
+- before going down into a child, an underfull child (less than 1/4 of the page used) is merged with its sibling
+  and the separator key, when they fit in one non-full page, or borrows entries from the sibling through the parent;
+  the fill is measured in bytes, as the keys have variable length;
+- a key in a leaf is removed;
 - a key in an inner page is replaced by its predecessor
   (the last key of the deepest non-empty page on the right spine of the left subtree),
   or by its successor if the left subtree is empty;
 - if both neighbouring subtrees are empty, the key is removed with its right subtree and the pages are freed;
 - an inner root without keys is dropped and the tree becomes lower.
 
-All leaves stay at the same depth, but the pages are not rebalanced:
-space is reused by later inserts, the file never shrinks. The price is measured in [Worst cases](#worst-cases).
+```text
+merge:   x: ..k..        x: .....        borrow:  x: ..k..          x: ..f..
+             / \     =>       /                       / \     =>        / \
+            L   R          L k R                     L    f R       L k    R
+```
+
+All three pages are fetched before the first change, so the tree stays valid between page fetches
+(see [Journal and recovery](#journal-and-recovery)); after a fix the deletion starts again from the root.
+All leaves stay at the same depth; freed pages are reused by later inserts, the file never shrinks.
+The effect is measured in [Worst cases](#worst-cases).
 
 ### Page cache
 
@@ -294,20 +305,20 @@ the price of the simple crash-consistency scheme. CI runs the benchmark on every
 
 [`tests/test_worst.c`](tests/test_worst.c) (a part of `make test`) runs the workloads that hurt this tree most,
 checks the tree with `db_check` and prints its shape (`db_stats`) next to a *rebuilt* tree:
-the same keys inserted into a fresh database in a random order — about what rebalancing would give.
+the same keys inserted into a fresh database in a random order.
 `./build/test_worst 100000`, 512-byte pages, 9-byte keys, 16-byte values, the whole tree in the cache:
 
 | case | keys | height | pages | empty pages | fill | lookup, us |
 |---|--:|---|---|--:|---|---|
-| random inserts (baseline) | 63230 | 6 / 6 | 10006 / 10414 | 9 | 48% / 46% | 0.43 / 0.44 |
-| ascending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.42 / 0.47 |
-| descending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.40 / 0.54 |
-| delete 90% at random | 10007 | 5 / 5 | 8796 / 1595 | 5882 | 9% / 47% | 0.30 / 0.29 |
-| keep every 100th key | 1000 | 5 / 4 | 2112 / 158 | 2000 | 4% / 48% | 0.20 / 0.21 |
-| delete all but 10 keys | 10 | 5 / 1 | 10 / 1 | 6 | 8% / 75% | 0.15 / 0.05 |
-| sliding window (a queue) | 5000 | 4 / 5 | 559 / 795 | 3 | 67% / 47% | 0.27 / 0.31 |
-| random insert/delete churn | 50050 | 6 / 6 | 12659 / 7991 | 787 | 30% / 47% | 0.44 / 0.40 |
-| max-size values (vs 16-byte values) | 6334 | 6 / 4 | 1590 / 706 | 1 | 49% / 67% | 0.31 / 0.27 |
+| random inserts (baseline) | 63230 | 6 / 6 | 10006 / 10414 | 9 | 48% / 46% | 0.43 / 0.45 |
+| ascending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.44 / 0.51 |
+| descending inserts | 100000 | 5 / 6 | 11111 / 15868 | 0 | 68% / 47% | 0.44 / 0.48 |
+| delete 90% at random | 10007 | 5 / 5 | 2607 / 1595 | 0 | 29% / 47% | 0.32 / 0.29 |
+| keep every 100th key | 1000 | 4 / 4 | 266 / 158 | 0 | 28% / 48% | 0.22 / 0.21 |
+| delete all but 10 keys | 10 | 2 / 1 | 3 / 1 | 0 | 25% / 75% | 0.07 / 0.05 |
+| sliding window (a queue) | 5000 | 4 / 5 | 559 / 795 | 0 | 67% / 47% | 0.26 / 0.27 |
+| random insert/delete churn | 50050 | 6 / 6 | 9131 / 7991 | 0 | 41% / 47% | 0.50 / 0.41 |
+| max-size values (vs 16-byte values) | 6334 | 6 / 4 | 1590 / 706 | 1 | 49% / 67% | 0.34 / 0.26 |
 
 Each cell: this tree / the rebuilt one. What it shows:
 
@@ -321,11 +332,19 @@ Each cell: this tree / the rebuilt one. What it shows:
   | sliding window, split in halves → at the edge | 5 → 4 | 1005 → 559 | 37% → 67% |
 
   Random inserts are not affected: only the very right (left) child of a page is split at the edge.
-- **Mass deletes** are the worst case of the lazy deletion: after deleting 90% of the keys the tree keeps
-  5.5 times more pages, two thirds of them empty.
-  Rebalancing (merging and borrowing on delete) would keep the fill near the rebuilt one and lower the tree.
-  The freed pages are reused by later inserts, but the file never shrinks.
-- **Churn** (random inserts and deletes) slowly lowers the fill: 30% against 47%; merges would help here too.
+- **Mass deletes and churn** keep the pages at least a quarter full with the rebalancing on delete
+  (see [Deletion](#deletion)). Before it the deletion was lazy and left empty pages:
+
+  | case | height | pages | empty pages | fill |
+  |---|---|---|--:|---|
+  | delete 90% at random, lazy → rebalancing | 5 → 5 | 8796 → 2607 | 5882 → 0 | 9% → 29% |
+  | keep every 100th key, lazy → rebalancing | 5 → 4 | 2112 → 266 | 2000 → 0 | 4% → 28% |
+  | delete all but 10 keys, lazy → rebalancing | 5 → 2 | 10 → 3 | 6 → 0 | 8% → 25% |
+  | random insert/delete churn, lazy → rebalancing | 6 → 6 | 12659 → 9131 | 787 → 0 | 30% → 41% |
+
+  A deleted tree stays below the rebuilt one (29% against 47%): a page is fixed only when it falls below 1/4,
+  as in a B-tree with the minimum fill of a quarter. The freed pages are reused by later inserts,
+  but the file never shrinks.
 - **The baseline fill is about 50%**, not the usual 69% of a B-tree: a page counts as full at 75%
   (a quarter is kept for a median and an entry growth, see [Page layout](#page-layout)).
 - With the tree in memory a lookup costs little either way (at most 1.3 times slower):
@@ -338,7 +357,7 @@ Each cell: this tree / the rebuilt one. What it shows:
   journal records are written without `fsync` (only checkpoints are synced),
   and a crash in the middle of writing the pages can leave the file inconsistent (no double-write buffer).
 - Key + value size is limited by the page size (1/8 of a page); empty keys are not allowed.
-- No range scans or iterators; pages are not merged after deletes, the file does not shrink.
+- No range scans or iterators; the file does not shrink after deletes (freed pages are reused).
 - Integers are stored in the native byte order (the files are not portable between endiannesses).
 - Fatal I/O errors inside the cache terminate the process (`exit`), as in the original code.
 
