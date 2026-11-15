@@ -4,6 +4,7 @@
 #include "mydb_log_low.h"
 #include "mydb_error.h"
 #include "mydb_trace.h"
+#include "mydb_block.h"
 
 //-------------------------------------------------------------------------------------------------------------
 static uint32_t fnv1a(IN uint32_t hash, IN const void *data, IN size_t size)
@@ -251,6 +252,10 @@ bool mydb_recover(IN sDB *db)
     } while (record);
     db->replaying_ = false;
     TRACE(MYDB_TRACE_OPS, "recovery: %lu operations replayed, %lu failed ones skipped", replayed, aborted);
+    /* a crash in the middle of an operation can leave pages allocated in the bitmap but not linked
+     * into the tree (an eviction wrote a split half-done): they would never be reused */
+    if ((replayed || aborted) && block_rebuild_bitmap(db))
+        return true;
     //-----------------------------------
     /* write the recovered state and cut a possibly torn tail of the journal */
     return mydb_flush(db) != 0;

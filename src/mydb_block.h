@@ -89,5 +89,7 @@ eDBState block_split_child(IN sBlock *parent, IN sBlock *ychild, OUT sBlock *zch
 long block_check_tree(IN sDB *db);
 /* the page statistics of the tree, 0 or -1 */
 int block_stats(IN sDB *db, OUT sDBStat *st);
+/* the used pages of the bitmap are exactly the pages of the tree (after a crash). 0 or -1 */
+int block_rebuild_bitmap(IN sDB *db);
 //-------------------------------------------------------------------------------------------------------------
 #endif // _MYDB_BLOCK_H_
