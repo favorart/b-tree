@@ -11,5 +11,5 @@
   because a cache eviction may write all dirty pages at that moment (see `mydb_cache_push` in `src/mydb_cache.c`).
   Make the changes of one logical step (e.g. a key replacement in two pages) without fetching pages in between.
 - On-disk format changes need `MYDB_VERSION` bumped in `include/mydb.h` and the README updated.
-- Every behaviour change needs a test in `tests/test_mydb.c`; `db_check` validates the tree.
+- Every behaviour change needs a test: `tests/test_units.c` for a module, `tests/test_mydb.c` through the API; `db_check` validates the tree.
 - A release: bump `MYDB_LIB_VERSION_*` in `include/mydb.h`, merge, push the tag `vX.Y.Z` (see `.github/workflows/release.yml`).
